@@ -2,19 +2,24 @@ package services
 
 import (
 	"errors"
+	"log"
+	"mini-crypto-wallet-api/kafkaclient"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
+	"time"
 )
 
 type TransactionService struct {
 	walletRepo      repositories.WalletRepository
 	transactionRepo repositories.TransactionRepository
+	kafkaProducer   *kafkaclient.KafkaProducer
 }
 
-func NewTransactionService(walletRepo repositories.WalletRepository, txRepo repositories.TransactionRepository) *TransactionService {
+func NewTransactionService(walletRepo repositories.WalletRepository, txRepo repositories.TransactionRepository, producer *kafkaclient.KafkaProducer) *TransactionService {
 	return &TransactionService{
 		walletRepo:      walletRepo,
 		transactionRepo: txRepo,
+		kafkaProducer:   producer,
 	}
 }
 
@@ -50,7 +55,23 @@ func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
 	tx.Hash = tx.GenerateHash()
 	tx.Signature = tx.GenerateSignature()
 
-	return s.transactionRepo.CreateTransaction(tx)
+	if err := s.transactionRepo.CreateTransaction(tx); err != nil {
+		return err
+	}
+
+	// Send Kafka message
+	msg := kafkaclient.TxCreatedMessage{
+		Hash:       tx.Hash,
+		FromUserID: tx.FromUserID,
+		ToUserID:   tx.ToUserID,
+		Amount:     tx.Amount,
+		Timestamp:  tx.CreatedAt.Format(time.RFC3339),
+	}
+	if err := s.kafkaProducer.SendTxCreated(msg); err != nil {
+		log.Println("⚠️ Kafka tx.created 發送失敗:", err)
+	}
+
+	return nil
 }
 
 func (s *TransactionService) GetTransactions(userID uint) ([]models.Transaction, error) {
