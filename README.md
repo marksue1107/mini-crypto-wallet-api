@@ -14,18 +14,20 @@ It simulates user creation, wallet management, fund transfer, and transaction hi
 - Swagger (OpenAPI 3.0 docs)
 - Wallet transfer with balance update
 - Transaction history
-- ⚡ Quick to run — no external dependencies
+- ✔ Kafka `tx.created` event publishing (via `segmentio/kafka-go`)
+- ⚡ Quick to run — lightweight setup with optional Kafka
 
 ---
 
 ## 📦 API Endpoints
 
-| Method | Path                         | Description                  |
-|--------|------------------------------|------------------------------|
-| POST   | `/users`                     | Create a new user + wallet   |
-| GET    | `/wallet/{user_id}`          | Get wallet balance           |
-| POST   | `/wallet/transfer`           | Transfer funds between users |
-| GET    | `/transactions/{user_id}`    | Get transaction history      |
+| Method | Path                         | Description                      |
+|--------|------------------------------|----------------------------------|
+| POST   | `/users`                     | Create a new user + wallet       |
+| GET    | `/wallet/{user_id}`          | Get wallet balance               |
+| POST   | `/wallet/transfer`           | Transfer funds between users     |
+| GET    | `/transactions/{user_id}`    | Get transaction history          |
+| GET    | `/tx/{hash}`                 | Query transaction by hash        |
 
 👉 API docs available at: [`/swagger/index.html`](http://localhost:8080/swagger/index.html)
 
