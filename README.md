@@ -1,6 +1,6 @@
 # 💸 mini-crypto-wallet-api
 
-A simple cryptocurrency wallet backend API built with **Golang** + **Gin** + **Kafka** +**GORM** + **SQLite**.
+A simple cryptocurrency wallet backend API built with **Golang** + **Gin** + **Kafka** + **GORM** + **SQLite**.
 
 This project was built as a technical demo for crypto exchange interview purposes.  
 It simulates user creation, wallet management, fund transfer, and transaction history retrieval.
