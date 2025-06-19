@@ -63,3 +63,23 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, txs)
 }
+
+// GetTxByHash 根據交易 Hash 查詢交易資訊
+//
+// @Summary Get transaction by hash
+// @Description Get a transaction detail by its unique hash
+// @Tags Transactions
+// @Produce json
+// @Param hash path string true "Transaction Hash"
+// @Success 200 {object} models.Transaction
+// @Failure 404 {object} map[string]string
+// @Router /tx/{hash} [get]
+func (h *TransactionHandler) GetTxByHash(c *gin.Context) {
+	hash := c.Param("hash")
+	tx, err := h.service.GetTransactionByHash(hash)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
+		return
+	}
+	c.JSON(http.StatusOK, tx)
+}

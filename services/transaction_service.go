@@ -19,6 +19,10 @@ func NewTransactionService(walletRepo repositories.WalletRepository, txRepo repo
 }
 
 func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
+	if fromID == toID {
+		return errors.New("cannot transfer to the same account")
+	}
+
 	fromWallet, err := s.walletRepo.GetWalletByUserID(fromID)
 	if err != nil {
 		return errors.New("from_user wallet not found")
@@ -43,9 +47,16 @@ func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
 		ToUserID:   toID,
 		Amount:     amount,
 	}
+	tx.Hash = tx.GenerateHash()
+	tx.Signature = tx.GenerateSignature()
+
 	return s.transactionRepo.CreateTransaction(tx)
 }
 
 func (s *TransactionService) GetTransactions(userID uint) ([]models.Transaction, error) {
 	return s.transactionRepo.GetTransactionsByUserID(userID)
+}
+
+func (s *TransactionService) GetTransactionByHash(hash string) (*models.Transaction, error) {
+	return s.transactionRepo.FindByHash(hash)
 }

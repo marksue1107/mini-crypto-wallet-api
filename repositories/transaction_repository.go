@@ -23,3 +23,11 @@ func (r *transactionRepositoryImpl) GetTransactionsByUserID(userID uint) ([]mode
 		Find(&txs).Error
 	return txs, err
 }
+
+func (r *transactionRepositoryImpl) FindByHash(hash string) (*models.Transaction, error) {
+	var tx models.Transaction
+	if err := database.DB.Where("hash = ?", hash).First(&tx).Error; err != nil {
+		return nil, err
+	}
+	return &tx, nil
+}

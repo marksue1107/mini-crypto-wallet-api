@@ -29,6 +29,7 @@ func SetupRouter() *gin.Engine {
 	r.GET("/wallet/:user_id", walletHandler.GetWallet)
 	r.POST("/wallet/transfer", txHandler.Transfer)
 	r.GET("/transactions/:user_id", txHandler.GetTransactions)
+	r.GET("/tx/:hash", txHandler.GetTxByHash)
 
 	return r
 }
