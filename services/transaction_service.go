@@ -3,19 +3,21 @@ package services
 import (
 	"errors"
 	"log"
+	"mini-crypto-wallet-api/database"
 	"mini-crypto-wallet-api/kafkaclient"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
+	"mini-crypto-wallet-api/utils"
 	"time"
 )
 
 type TransactionService struct {
-	walletRepo      repositories.WalletRepository
-	transactionRepo repositories.TransactionRepository
+	walletRepo      repositories.IWallet
+	transactionRepo repositories.ITransaction
 	kafkaProducer   *kafkaclient.KafkaProducer
 }
 
-func NewTransactionService(walletRepo repositories.WalletRepository, txRepo repositories.TransactionRepository, producer *kafkaclient.KafkaProducer) *TransactionService {
+func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.ITransaction, producer *kafkaclient.KafkaProducer) *TransactionService {
 	return &TransactionService{
 		walletRepo:      walletRepo,
 		transactionRepo: txRepo,
@@ -41,36 +43,43 @@ func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
 	}
 	fromWallet.Balance -= amount
 	toWallet.Balance += amount
-	if err := s.walletRepo.UpdateWallet(fromWallet); err != nil {
+
+	tx := database.DB.MasterDB.Begin()
+	defer utils.RollbackIfPanic(tx)
+
+	if err := s.walletRepo.UpdateWallet(fromWallet, tx); err != nil {
 		return err
 	}
-	if err := s.walletRepo.UpdateWallet(toWallet); err != nil {
+	if err := s.walletRepo.UpdateWallet(toWallet, tx); err != nil {
 		return err
 	}
-	tx := &models.Transaction{
+	transaction := &models.Transaction{
 		FromUserID: fromID,
 		ToUserID:   toID,
 		Amount:     amount,
 	}
-	tx.Hash = tx.GenerateHash()
-	tx.Signature = tx.GenerateSignature()
+	transaction.Hash = transaction.GenerateHash()
+	transaction.Signature = transaction.GenerateSignature()
 
-	if err := s.transactionRepo.CreateTransaction(tx); err != nil {
+	if err := s.transactionRepo.CreateTransaction(transaction, tx); err != nil {
 		return err
 	}
 
-	// Send Kafka message
-	msg := kafkaclient.TxCreatedMessage{
-		Hash:       tx.Hash,
-		FromUserID: tx.FromUserID,
-		ToUserID:   tx.ToUserID,
-		Amount:     tx.Amount,
-		Timestamp:  tx.CreatedAt.Format(time.RFC3339),
-	}
-	if err := s.kafkaProducer.SendTxCreated(msg); err != nil {
-		log.Println("⚠️ Kafka tx.created 發送失敗:", err)
-	}
+	tx.Commit()
 
+	// Send Kafka message
+	if s.kafkaProducer != nil {
+		msg := kafkaclient.TxCreatedMessage{
+			Hash:       transaction.Hash,
+			FromUserID: transaction.FromUserID,
+			ToUserID:   transaction.ToUserID,
+			Amount:     transaction.Amount,
+			Timestamp:  transaction.CreatedAt.Format(time.RFC3339),
+		}
+		if err := s.kafkaProducer.SendTxCreated(msg); err != nil {
+			log.Println("⚠️ Kafka tx.created 發送失敗:", err)
+		}
+	}
 	return nil
 }
 
@@ -80,4 +89,36 @@ func (s *TransactionService) GetTransactions(userID uint) ([]models.Transaction,
 
 func (s *TransactionService) GetTransactionByHash(hash string) (*models.Transaction, error) {
 	return s.transactionRepo.FindByHash(hash)
+}
+
+/*
+
+tester
+
+*/
+
+func (s *TransactionService) TransferWithLockOption(fromID, toID uint, amount float64, useLock bool) error {
+	if useLock {
+		return s.Transfer(fromID, toID, amount) // 使用加鎖版本
+	}
+
+	// 模擬未加鎖（不安全寫法）
+	fromWallet, err := s.walletRepo.GetWalletByUserID(fromID)
+	if err != nil {
+		return err
+	}
+	toWallet, err := s.walletRepo.GetWalletByUserID(toID)
+	if err != nil {
+		return err
+	}
+	if fromWallet.Balance < amount {
+		return errors.New("insufficient balance")
+	}
+
+	fromWallet.Balance -= amount
+	toWallet.Balance += amount
+
+	s.walletRepo.UpdateWallet(fromWallet)
+	s.walletRepo.UpdateWallet(toWallet)
+	return nil
 }

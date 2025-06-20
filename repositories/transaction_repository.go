@@ -1,32 +1,44 @@
 package repositories
 
 import (
+	"gorm.io/gorm"
 	"mini-crypto-wallet-api/database"
 	"mini-crypto-wallet-api/models"
+	"mini-crypto-wallet-api/repositories/entity"
 )
 
-type transactionRepositoryImpl struct{}
-
-func NewTransactionRepository() TransactionRepository {
-	return &transactionRepositoryImpl{}
+type transactionRepository struct {
+	entity.DBClient
 }
 
-func (r *transactionRepositoryImpl) CreateTransaction(tx *models.Transaction) error {
-	return database.DB.Create(tx).Error
+func NewTransactionRepository() ITransaction {
+	r := new(transactionRepository)
+	r.DBClient.MasterDB = database.DB.MasterDB
+
+	return r
 }
 
-func (r *transactionRepositoryImpl) GetTransactionsByUserID(userID uint) ([]models.Transaction, error) {
+func (r *transactionRepository) CreateTransaction(transaction *models.Transaction, tx ...*gorm.DB) error {
+	var db *gorm.DB = r.DBClient.MasterDB
+	if len(tx) > 0 {
+		db = tx[0]
+	}
+
+	return db.Create(transaction).Error
+}
+
+func (r *transactionRepository) GetTransactionsByUserID(userID uint) ([]models.Transaction, error) {
 	var txs []models.Transaction
-	err := database.DB.
+	err := r.DBClient.MasterDB.
 		Where("from_user_id = ? OR to_user_id = ?", userID, userID).
 		Order("created_at desc").
 		Find(&txs).Error
 	return txs, err
 }
 
-func (r *transactionRepositoryImpl) FindByHash(hash string) (*models.Transaction, error) {
+func (r *transactionRepository) FindByHash(hash string) (*models.Transaction, error) {
 	var tx models.Transaction
-	if err := database.DB.Where("hash = ?", hash).First(&tx).Error; err != nil {
+	if err := r.DBClient.MasterDB.Where("hash = ?", hash).First(&tx).Error; err != nil {
 		return nil, err
 	}
 	return &tx, nil

@@ -12,7 +12,9 @@ import (
 	"mini-crypto-wallet-api/models"
 )
 
-var DB *gorm.DB
+var DB struct {
+	MasterDB *gorm.DB
+}
 
 func InitDatabase() {
 	var err error
@@ -24,7 +26,7 @@ func InitDatabase() {
 		Conn:       nil,
 	}
 
-	DB, err = gorm.Open(dialector, &gorm.Config{
+	DB.MasterDB, err = gorm.Open(dialector, &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
@@ -33,7 +35,7 @@ func InitDatabase() {
 
 	log.Println("✅ Database connected")
 
-	err = DB.AutoMigrate(&models.User{}, &models.Wallet{}, &models.Transaction{})
+	err = DB.MasterDB.AutoMigrate(&models.User{}, &models.Wallet{}, &models.Transaction{})
 	if err != nil {
 		log.Fatal("❌ Failed to migrate database:", err)
 	}

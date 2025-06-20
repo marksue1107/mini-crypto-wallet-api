@@ -6,11 +6,11 @@ import (
 )
 
 type UserService struct {
-	userRepo   repositories.UserRepository
-	walletRepo repositories.WalletRepository
+	userRepo   repositories.IUser
+	walletRepo repositories.IWallet
 }
 
-func NewUserService(userRepo repositories.UserRepository, walletRepo repositories.WalletRepository) *UserService {
+func NewUserService(userRepo repositories.IUser, walletRepo repositories.IWallet) *UserService {
 	return &UserService{userRepo, walletRepo}
 }
 
@@ -22,5 +22,6 @@ func (s *UserService) CreateUser(user *models.User) error {
 		UserID:  user.ID,
 		Balance: 1000.0,
 	}
-	return s.walletRepo.UpdateWallet(wallet)
+
+	return s.walletRepo.CreateWallet(wallet)
 }
