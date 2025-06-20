@@ -6,10 +6,10 @@ import (
 )
 
 type WalletService struct {
-	walletRepo repositories.WalletRepository
+	walletRepo repositories.IWallet
 }
 
-func NewWalletService(walletRepo repositories.WalletRepository) *WalletService {
+func NewWalletService(walletRepo repositories.IWallet) *WalletService {
 	return &WalletService{
 		walletRepo: walletRepo,
 	}

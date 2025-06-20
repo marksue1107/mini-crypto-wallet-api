@@ -2,6 +2,6 @@ package repositories
 
 import "mini-crypto-wallet-api/models"
 
-type UserRepository interface {
+type IUser interface {
 	CreateUser(user *models.User) error
 }
