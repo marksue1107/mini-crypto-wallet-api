@@ -35,15 +35,38 @@ It simulates user creation, wallet management, fund transfer, and transaction hi
 
 ## 🛠️ How to Run
 
-### 1. Install dependencies (if needed)
+### 1. Build the Docker image
 
 ```bash
-go mod tidy
-
-
-go run main/main.go
-
+docker build -t mini-wallet-api .
 ```
+
+### 2. Start Kafka and PostgreSQL
+
+Use the provided `docker-compose.kafka.yml` file to launch the
+supporting services:
+
+```bash
+docker compose -f docker-compose.kafka.yml up -d
+```
+
+### 3. Run the API container
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e APP_ENV=production \
+  -e DB_DRIVER=postgres \
+  -e POSTGRES_DSN="host=postgres user=postgres password=secret dbname=mini_wallet port=5432 sslmode=disable" \
+  -e KAFKA_BROKER=kafka:9092 \
+  mini-wallet-api
+```
+
+### Required environment variables
+
+- `APP_ENV` – application environment
+- `DB_DRIVER` – `postgres` or `sqlite`
+- `POSTGRES_DSN` – PostgreSQL connection string
+- `KAFKA_BROKER` – Kafka broker address
 
 ---
 
