@@ -1,35 +1,43 @@
-# 編譯產物
+# 📦 Go build artifacts
 *.exe
 *.dll
 *.so
 *.dylib
 *.test
-
-# 測試檔與報告
 *.out
+
+# ✅ Go coverage / profiling
 coverage.*
 *.coverprofile
 profile.cov
 
-# Go Workspace
+# 🛠 Go Workspace
 go.work
 go.work.sum
 
-# 資料庫檔案（避免 .db 一起打包）
+# 🗃 Database / Journal files
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
+internal/test/*.db
+internal/test/*.db-journal
 
-# 敏感設定
+# 🔐 Environment / secrets
 .env
+.env.*
 
-# 文件與非必要展示物
-README.md
+# 📝 Docs / Temp / Logs
+*.log
 docs/
+README.md
 
-# 編輯器設定
+# 💻 Editor configs
 .idea/
 .vscode/
 
-# Git 檔案（避免將 .git/ 打包進 image）
+# 🔄 Git metadata
 .git/
+
+# 🧪 Testing data
+internal/test/data.*

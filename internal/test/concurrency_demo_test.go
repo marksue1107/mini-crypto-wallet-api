@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"gorm.io/gorm"
 	"log"
-	"mini-crypto-wallet-api/database"
+	"mini-crypto-wallet-api/db_conn"
+	"mini-crypto-wallet-api/internal/config"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
 	"mini-crypto-wallet-api/services"
@@ -14,8 +15,9 @@ import (
 
 // 測試主流程
 func TestConcurrentTransfers(t *testing.T) {
+	config.LoadConfig()
 	// 初始化資料庫
-	database.InitDatabase()
+	db_conn.InitDatabase()
 
 	// 初始化 repository 和 service
 	walletRepo := repositories.NewWalletRepository()
@@ -23,19 +25,19 @@ func TestConcurrentTransfers(t *testing.T) {
 	txService := services.NewTransactionService(walletRepo, txRepo, nil) // Kafka 可用 nil
 
 	// 重置 A/B 錢包
-	resetWallets(database.DB.MasterDB, walletRepo)
+	resetWallets(db_conn.Conn_DB.MasterDB, walletRepo)
 
 	fmt.Println("=== 測試未加鎖交易 ===")
-	simulateConcurrentTransfers(txService, walletRepo, false)
+	simulateConcurrentTransfers(t, txService, walletRepo, false)
 
-	resetWallets(database.DB.MasterDB, walletRepo)
+	resetWallets(db_conn.Conn_DB.MasterDB, walletRepo)
 
 	fmt.Println("=== 測試加鎖交易 ===")
-	simulateConcurrentTransfers(txService, walletRepo, true)
+	simulateConcurrentTransfers(t, txService, walletRepo, true)
 }
 
 // 模擬兩個 goroutine 同時轉帳
-func simulateConcurrentTransfers(service *services.TransactionService, walletRepo repositories.IWallet, useLock bool) {
+func simulateConcurrentTransfers(t *testing.T, service *services.TransactionService, walletRepo repositories.IWallet, useLock bool) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -47,8 +49,8 @@ func simulateConcurrentTransfers(service *services.TransactionService, walletRep
 		go func(id int) {
 			defer wg.Done()
 			fmt.Println("🔄 正在執行 TransferWithLockOption(..., useLock =", useLock, ")")
-			if err := service.TransferWithLockOption(fromID, toID, amount, useLock); err != nil {
-				log.Printf("🔴 Transfer %d failed: %v\n", id, err)
+			if err := service.TransferWithLockOption(t, fromID, toID, amount, useLock); err != nil {
+				log.Printf("🔴 Transfer %d failed: %v", id, err)
 			} else {
 				log.Printf("🟢 Transfer %d success\n", id)
 			}

@@ -3,7 +3,7 @@ package repositories
 import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"mini-crypto-wallet-api/database"
+	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories/entity"
 )
@@ -14,7 +14,7 @@ type walletRepository struct {
 
 func NewWalletRepository() IWallet {
 	r := new(walletRepository)
-	r.DBClient.MasterDB = database.DB.MasterDB
+	r.DBClient.MasterDB = db_conn.Conn_DB.MasterDB
 
 	return r
 }

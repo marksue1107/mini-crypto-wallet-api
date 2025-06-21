@@ -3,21 +3,22 @@ package services
 import (
 	"errors"
 	"log"
-	"mini-crypto-wallet-api/database"
-	"mini-crypto-wallet-api/kafkaclient"
+	"mini-crypto-wallet-api/db_conn"
+	"mini-crypto-wallet-api/kafka_client"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
 	"mini-crypto-wallet-api/utils"
+	"testing"
 	"time"
 )
 
 type TransactionService struct {
 	walletRepo      repositories.IWallet
 	transactionRepo repositories.ITransaction
-	kafkaProducer   *kafkaclient.KafkaProducer
+	kafkaProducer   *kafka_client.KafkaProducer
 }
 
-func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.ITransaction, producer *kafkaclient.KafkaProducer) *TransactionService {
+func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.ITransaction, producer *kafka_client.KafkaProducer) *TransactionService {
 	return &TransactionService{
 		walletRepo:      walletRepo,
 		transactionRepo: txRepo,
@@ -44,7 +45,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
 	fromWallet.Balance -= amount
 	toWallet.Balance += amount
 
-	tx := database.DB.MasterDB.Begin()
+	tx := db_conn.Conn_DB.MasterDB.Begin()
 	defer utils.RollbackIfPanic(tx)
 
 	if err := s.walletRepo.UpdateWallet(fromWallet, tx); err != nil {
@@ -65,11 +66,13 @@ func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
 		return err
 	}
 
-	tx.Commit()
+	if commitDB := tx.Commit(); commitDB.Error != nil {
+		return commitDB.Error
+	}
 
 	// Send Kafka message
 	if s.kafkaProducer != nil {
-		msg := kafkaclient.TxCreatedMessage{
+		msg := kafka_client.TxCreatedMessage{
 			Hash:       transaction.Hash,
 			FromUserID: transaction.FromUserID,
 			ToUserID:   transaction.ToUserID,
@@ -97,7 +100,7 @@ tester
 
 */
 
-func (s *TransactionService) TransferWithLockOption(fromID, toID uint, amount float64, useLock bool) error {
+func (s *TransactionService) TransferWithLockOption(t *testing.T, fromID, toID uint, amount float64, useLock bool) error {
 	if useLock {
 		return s.Transfer(fromID, toID, amount) // 使用加鎖版本
 	}

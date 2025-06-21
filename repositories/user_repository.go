@@ -1,7 +1,7 @@
 package repositories
 
 import (
-	"mini-crypto-wallet-api/database"
+	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories/entity"
 )
@@ -12,7 +12,7 @@ type userRepository struct {
 
 func NewUserRepository() IUser {
 	r := new(userRepository)
-	r.DBClient.MasterDB = database.DB.MasterDB
+	r.DBClient.MasterDB = db_conn.Conn_DB.MasterDB
 
 	return r
 }
