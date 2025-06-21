@@ -31,11 +31,14 @@ func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
 		return errors.New("cannot transfer to the same account")
 	}
 
-	fromWallet, err := s.walletRepo.GetWalletByUserID(fromID)
+	tx := db_conn.Conn_DB.MasterDB.Begin()
+	defer utils.RollbackIfPanic(tx)
+
+	fromWallet, err := s.walletRepo.GetWalletByUserIDWithTx(fromID, tx)
 	if err != nil {
 		return errors.New("from_user wallet not found")
 	}
-	toWallet, err := s.walletRepo.GetWalletByUserID(toID)
+	toWallet, err := s.walletRepo.GetWalletByUserIDWithTx(toID, tx)
 	if err != nil {
 		return errors.New("to_user wallet not found")
 	}
@@ -44,9 +47,6 @@ func (s *TransactionService) Transfer(fromID, toID uint, amount float64) error {
 	}
 	fromWallet.Balance -= amount
 	toWallet.Balance += amount
-
-	tx := db_conn.Conn_DB.MasterDB.Begin()
-	defer utils.RollbackIfPanic(tx)
 
 	if err := s.walletRepo.UpdateWallet(fromWallet, tx); err != nil {
 		return err
