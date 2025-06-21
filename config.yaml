@@ -1,0 +1,9 @@
+# config.yaml
+app_env: development
+db_driver: postgres
+
+# PostgreSQL 連線字串
+postgres_dsn: host=localhost user=postgres password=secret dbname=mini_wallet_DB port=5432 sslmode=disable
+
+# Kafka broker 位置（用於發送或接收訊息）
+kafka_broker: localhost:9092

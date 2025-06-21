@@ -11,7 +11,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.2.1
-    container_name: kafkaclient
+    container_name: kafka_client
     ports:
       - "9092:9092"
     environment:
@@ -21,3 +21,18 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     depends_on:
       - zookeeper
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: mini_wallet
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:

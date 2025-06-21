@@ -3,12 +3,12 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 	"mini-crypto-wallet-api/handlers"
-	"mini-crypto-wallet-api/kafkaclient"
+	"mini-crypto-wallet-api/kafka_client"
 	"mini-crypto-wallet-api/repositories"
 	"mini-crypto-wallet-api/services"
 )
 
-func SetupRouter(producer *kafkaclient.KafkaProducer) *gin.Engine {
+func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	r := gin.Default()
 
 	// Init repository
