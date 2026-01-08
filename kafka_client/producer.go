@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/segmentio/kafka-go"
+	"github.com/shopspring/decimal"
 	"log"
 )
 
 type TxCreatedMessage struct {
-	Hash       string  `json:"hash"`
-	FromUserID uint    `json:"from_user_id"`
-	ToUserID   uint    `json:"to_user_id"`
-	Amount     float64 `json:"amount"`
-	Timestamp  string  `json:"timestamp"`
+	Hash       string          `json:"hash"`
+	FromUserID uint            `json:"from_user_id"`
+	ToUserID   uint            `json:"to_user_id"`
+	Amount     decimal.Decimal `json:"amount"`
+	Timestamp  string          `json:"timestamp"`
 }
 
 type KafkaProducer struct {
