@@ -42,6 +42,14 @@ func (r *walletRepository) GetWalletByUserIDWithTx(userID uint, tx ...*gorm.DB) 
 	return &wallet, nil
 }
 
+func (r *walletRepository) GetWalletByUserIDAndCurrency(userID uint, currencyID uint) (*models.Wallet, error) {
+	var wallet models.Wallet
+	if err := r.DBClient.MasterDB.Where("user_id = ? AND currency_id = ?", userID, currencyID).First(&wallet).Error; err != nil {
+		return nil, err
+	}
+	return &wallet, nil
+}
+
 func (r *walletRepository) CreateWallet(wallet *models.Wallet, tx ...*gorm.DB) error {
 	var db *gorm.DB = r.DBClient.MasterDB
 	if len(tx) > 0 {

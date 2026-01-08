@@ -27,7 +27,13 @@ func InitDatabase() {
 }
 
 func autoMigrate() {
-	err := Conn_DB.MasterDB.AutoMigrate(&models.User{}, &models.Wallet{}, &models.Transaction{})
+	err := Conn_DB.MasterDB.AutoMigrate(
+		&models.User{},
+		&models.Currency{},
+		&models.Wallet{},
+		&models.Transaction{},
+		&models.BalanceHistory{},
+	)
 	if err != nil {
 		log.Fatal("❌ Failed to migrate database:", err)
 	}

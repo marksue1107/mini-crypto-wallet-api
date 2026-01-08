@@ -2,7 +2,6 @@ package test
 
 import (
 	"fmt"
-	"gorm.io/gorm"
 	"log"
 	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/internal/config"
@@ -11,6 +10,10 @@ import (
 	"mini-crypto-wallet-api/services"
 	"sync"
 	"testing"
+
+	"gorm.io/gorm"
+
+	"github.com/shopspring/decimal"
 )
 
 // 測試主流程
@@ -43,13 +46,14 @@ func simulateConcurrentTransfers(t *testing.T, service *services.TransactionServ
 
 	fromID := uint(1)
 	toID := uint(2)
-	amount := 800.0
+	currencyID := uint(1) // 預設幣種
+	amount := decimal.NewFromInt(800)
 
 	for i := 1; i <= 2; i++ {
 		go func(id int) {
 			defer wg.Done()
 			fmt.Println("🔄 正在執行 TransferWithLockOption(..., useLock =", useLock, ")")
-			if err := service.TransferWithLockOption(t, fromID, toID, amount, useLock); err != nil {
+			if err := service.TransferWithLockOption(t, fromID, toID, currencyID, amount, useLock); err != nil {
 				log.Printf("🔴 Transfer %d failed: %v", id, err)
 			} else {
 				log.Printf("🟢 Transfer %d success\n", id)
@@ -66,13 +70,13 @@ func simulateConcurrentTransfers(t *testing.T, service *services.TransactionServ
 	if fromerr != nil || from == nil {
 		fmt.Printf("❌ 查詢 A 錢包失敗: %v\n", fromerr)
 	} else {
-		fmt.Printf("📊 A 最終餘額: %.2f\n", from.Balance)
+		fmt.Printf("📊 A 最終餘額: %s\n", from.Balance.String())
 	}
 
 	if toerr != nil || to == nil {
 		fmt.Printf("❌ 查詢 B 錢包失敗: %v\n", toerr)
 	} else {
-		fmt.Printf("📊 B 最終餘額: %.2f\n", to.Balance)
+		fmt.Printf("📊 B 最終餘額: %s\n", to.Balance.String())
 	}
 }
 
@@ -80,6 +84,6 @@ func simulateConcurrentTransfers(t *testing.T, service *services.TransactionServ
 func resetWallets(db *gorm.DB, repo repositories.IWallet) {
 	db.Exec("DELETE FROM wallets")
 
-	repo.CreateWallet(&models.Wallet{UserID: 1, Balance: 1000})
-	repo.CreateWallet(&models.Wallet{UserID: 2, Balance: 0})
+	repo.CreateWallet(&models.Wallet{UserID: 1, CurrencyID: 1, Balance: decimal.NewFromInt(1000)})
+	repo.CreateWallet(&models.Wallet{UserID: 2, CurrencyID: 1, Balance: decimal.Zero})
 }

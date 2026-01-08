@@ -36,6 +36,29 @@ func (r *transactionRepository) GetTransactionsByUserID(userID uint) ([]models.T
 	return txs, err
 }
 
+func (r *transactionRepository) GetTransactionsByUserIDWithPagination(userID uint, offset, limit int) ([]models.Transaction, int64, error) {
+	var txs []models.Transaction
+	var total int64
+
+	// 計算總數
+	err := r.DBClient.MasterDB.Model(&models.Transaction{}).
+		Where("from_user_id = ? OR to_user_id = ?", userID, userID).
+		Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 獲取分頁數據
+	err = r.DBClient.MasterDB.
+		Where("from_user_id = ? OR to_user_id = ?", userID, userID).
+		Order("created_at desc").
+		Offset(offset).
+		Limit(limit).
+		Find(&txs).Error
+
+	return txs, total, err
+}
+
 func (r *transactionRepository) FindByHash(hash string) (*models.Transaction, error) {
 	var tx models.Transaction
 	if err := r.DBClient.MasterDB.Where("hash = ?", hash).First(&tx).Error; err != nil {

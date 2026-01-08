@@ -20,3 +20,19 @@ func NewUserRepository() IUser {
 func (r *userRepository) CreateUser(user *models.User) error {
 	return r.DBClient.MasterDB.Create(user).Error
 }
+
+func (r *userRepository) GetUserByUsername(username string) (*models.User, error) {
+	var user models.User
+	if err := r.DBClient.MasterDB.Where("username = ?", username).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) GetUserByID(userID uint) (*models.User, error) {
+	var user models.User
+	if err := r.DBClient.MasterDB.Where("id = ?", userID).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
