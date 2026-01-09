@@ -1,0 +1,880 @@
+{
+	"info": {
+		"_postman_id": "12345678-1234-1234-1234-123456789abc",
+		"name": "Mini Crypto Wallet API",
+		"description": "Complete API collection demonstrating cryptocurrency wallet backend with JWT authentication, transfers, and transaction history.\n\n## Quick Start\n1. Ensure the API is running: `go run main/main.go`\n2. Run folder \"1. Authentication Flow\" to create users and get tokens\n3. Tokens are automatically saved to environment variables\n4. Explore other endpoints\n\n## Features Demonstrated\n- JWT authentication and authorization\n- Multi-currency wallet support\n- Concurrent-safe transfers with row locking\n- Transaction history with pagination\n- Balance audit trail\n- Error handling and validation",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Authentication Flow",
+			"item": [
+				{
+					"name": "Register Alice",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set(\"alice_id\", response.user_id);",
+									"    pm.test(\"User created successfully\", () => {",
+									"        pm.expect(response.message).to.eql(\"user created\");",
+									"        pm.expect(response.user_id).to.be.a('number');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"alice\",\n    \"email\": \"alice@example.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "Create a new user account. Automatically creates a wallet with 1000 USDT initial balance."
+					},
+					"response": []
+				},
+				{
+					"name": "Register Bob",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set(\"bob_id\", response.user_id);",
+									"    pm.test(\"User created successfully\", () => {",
+									"        pm.expect(response.message).to.eql(\"user created\");",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"bob\",\n    \"email\": \"bob@example.com\",\n    \"password\": \"password456\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login Alice",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set(\"alice_token\", response.token);",
+									"    pm.environment.set(\"alice_id\", response.user_id);",
+									"    ",
+									"    pm.test(\"Login successful\", () => {",
+									"        pm.expect(response.token).to.not.be.empty;",
+									"        pm.expect(response.username).to.eql(\"alice\");",
+									"        pm.expect(response.expires_in).to.eql(86400); // 24 hours",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"alice\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate user and receive JWT token. Token is automatically saved to environment for subsequent requests."
+					},
+					"response": []
+				},
+				{
+					"name": "Login Bob",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set(\"bob_token\", response.token);",
+									"    pm.environment.set(\"bob_id\", response.user_id);",
+									"    ",
+									"    pm.test(\"Login successful\", () => {",
+									"        pm.expect(response.token).to.not.be.empty;",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"bob\",\n    \"password\": \"password456\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Complete authentication flow: register users and obtain JWT tokens."
+		},
+		{
+			"name": "2. Currencies",
+			"item": [
+				{
+					"name": "Get All Currencies",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status is 200\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const currencies = pm.response.json();",
+									"    if (currencies.length > 0) {",
+									"        pm.environment.set(\"currency_id\", currencies[0].id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/currencies",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"currencies"
+							]
+						},
+						"description": "List all available currencies. Automatically saves first currency ID for transfer requests."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Currency by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/currencies/{{currency_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"currencies",
+								"{{currency_id}}"
+							]
+						},
+						"description": "Get details of a specific currency by ID."
+					},
+					"response": []
+				}
+			],
+			"description": "Currency management endpoints."
+		},
+		{
+			"name": "3. Wallet Operations",
+			"item": [
+				{
+					"name": "Get Alice's Wallet",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status is 200\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Wallet has balance\", () => {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.balance).to.exist;",
+									"    pm.expect(response.user_id).to.eql(parseInt(pm.environment.get('alice_id')));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{alice_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/wallet/{{alice_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"{{alice_id}}"
+							]
+						},
+						"description": "Get wallet balance for Alice. Requires authentication - user can only access their own wallet."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Bob's Wallet",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bob_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/wallet/{{bob_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"{{bob_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "[Negative] Get Other User's Wallet (403)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 403 Forbidden\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"",
+									"pm.test(\"Error message about forbidden access\", () => {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.error).to.include('forbidden');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{alice_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/wallet/{{bob_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"{{bob_id}}"
+							]
+						},
+						"description": "Demonstrates authorization: Alice cannot access Bob's wallet. Should return 403 Forbidden."
+					},
+					"response": []
+				}
+			],
+			"description": "Wallet balance queries with authorization checks."
+		},
+		{
+			"name": "4. Transfer Scenarios",
+			"item": [
+				{
+					"name": "Transfer: Alice → Bob (100 USDT)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Transfer successful\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.message).to.eql('transfer successful');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{alice_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_user_id\": {{alice_id}},\n    \"to_user_id\": {{bob_id}},\n    \"currency_id\": {{currency_id}},\n    \"amount\": 100\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/wallet/transfer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"transfer"
+							]
+						},
+						"description": "Successful transfer demonstrating:\n- Row-level locking prevents race conditions\n- Atomic balance updates (both wallets or neither)\n- Transaction record created with hash\n- Balance history audit trail\n- Kafka event published"
+					},
+					"response": []
+				},
+				{
+					"name": "[Negative] Transfer to Same Account (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 400 Bad Request\", () => {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Error about same account\", () => {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.error).to.include('same account');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{alice_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_user_id\": {{alice_id}},\n    \"to_user_id\": {{alice_id}},\n    \"currency_id\": {{currency_id}},\n    \"amount\": 50\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/wallet/transfer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"transfer"
+							]
+						},
+						"description": "Validation: Cannot transfer to the same account."
+					},
+					"response": []
+				},
+				{
+					"name": "[Negative] Insufficient Balance (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 400 Bad Request\", () => {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Error about insufficient balance\", () => {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.error).to.include('insufficient');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{alice_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_user_id\": {{alice_id}},\n    \"to_user_id\": {{bob_id}},\n    \"currency_id\": {{currency_id}},\n    \"amount\": 999999\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/wallet/transfer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"transfer"
+							]
+						},
+						"description": "Validation: Transfer amount exceeds available balance."
+					},
+					"response": []
+				},
+				{
+					"name": "[Negative] Unauthorized Transfer (403)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 403 Forbidden\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{alice_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_user_id\": {{bob_id}},\n    \"to_user_id\": {{alice_id}},\n    \"currency_id\": {{currency_id}},\n    \"amount\": 50\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/wallet/transfer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"transfer"
+							]
+						},
+						"description": "Authorization: Alice cannot transfer from Bob's account."
+					},
+					"response": []
+				},
+				{
+					"name": "[Negative] Missing Auth Token (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 401 Unauthorized\", () => {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_user_id\": {{alice_id}},\n    \"to_user_id\": {{bob_id}},\n    \"currency_id\": {{currency_id}},\n    \"amount\": 50\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/wallet/transfer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"wallet",
+								"transfer"
+							]
+						},
+						"description": "Authentication required: Request without token should fail."
+					},
+					"response": []
+				}
+			],
+			"description": "Transfer operations demonstrating both successful and error scenarios."
+		},
+		{
+			"name": "5. Transaction History",
+			"item": [
+				{
+					"name": "Get Alice's Transactions",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status is 200\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.test(\"Has pagination info\", () => {",
+									"        pm.expect(response.pagination).to.exist;",
+									"        pm.expect(response.pagination.page).to.eql(1);",
+									"    });",
+									"    ",
+									"    if (response.data && response.data.length > 0) {",
+									"        pm.environment.set('last_tx_hash', response.data[0].hash);",
+									"        pm.test(\"Transaction has hash\", () => {",
+									"            pm.expect(response.data[0].hash).to.not.be.empty;",
+									"        });",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{alice_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/transactions/{{alice_id}}?page=1&page_size=20",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"transactions",
+								"{{alice_id}}"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "page_size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Get paginated transaction history for Alice. Includes all transactions where Alice is sender or receiver."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Bob's Transactions",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bob_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/transactions/{{bob_id}}?page=1&page_size=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"transactions",
+								"{{bob_id}}"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "page_size",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Query Transaction by Hash",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Transaction found\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    const tx = pm.response.json();",
+									"    pm.expect(tx.hash).to.not.be.empty;",
+									"    pm.expect(tx.signature).to.not.be.empty;",
+									"    pm.expect(tx.status).to.eql('completed');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/tx/{{last_tx_hash}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"tx",
+								"{{last_tx_hash}}"
+							]
+						},
+						"description": "Query specific transaction by its SHA256 hash. Public endpoint - no authentication required."
+					},
+					"response": []
+				}
+			],
+			"description": "Transaction history and lookup endpoints with pagination support."
+		},
+		{
+			"name": "6. Health & Monitoring",
+			"item": [
+				{
+					"name": "Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Service is healthy\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.status).to.eql('ok');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Basic health check endpoint."
+					},
+					"response": []
+				},
+				{
+					"name": "Readiness Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Service is ready\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.database).to.eql('connected');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/ready",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ready"
+							]
+						},
+						"description": "Readiness check verifying database connectivity."
+					},
+					"response": []
+				}
+			],
+			"description": "Service health and readiness endpoints for monitoring."
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		}
+	]
+}
