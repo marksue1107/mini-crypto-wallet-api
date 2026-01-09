@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/services"
 )
 
@@ -22,7 +23,7 @@ func NewCurrencyHandler(service *services.CurrencyService) *CurrencyHandler {
 // @Description Get list of all active currencies
 // @Tags Currency
 // @Produce json
-// @Success 200 {array} models.Currency
+// @Success 200 {array} models.CurrencyResponse
 // @Router /currencies [get]
 func (h *CurrencyHandler) GetCurrencies(c *gin.Context) {
 	currencies, err := h.service.GetAllCurrencies()
@@ -30,7 +31,10 @@ func (h *CurrencyHandler) GetCurrencies(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch currencies"})
 		return
 	}
-	c.JSON(http.StatusOK, currencies)
+
+	// Convert models to DTOs
+	responses := models.ToCurrencyResponses(currencies)
+	c.JSON(http.StatusOK, responses)
 }
 
 // GetCurrency 根據 ID 獲取幣種
@@ -40,7 +44,7 @@ func (h *CurrencyHandler) GetCurrencies(c *gin.Context) {
 // @Tags Currency
 // @Produce json
 // @Param id path int true "Currency ID"
-// @Success 200 {object} models.Currency
+// @Success 200 {object} models.CurrencyResponse
 // @Failure 404 {object} map[string]string
 // @Router /currencies/{id} [get]
 func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
@@ -55,5 +59,8 @@ func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "currency not found"})
 		return
 	}
-	c.JSON(http.StatusOK, currency)
+
+	// Convert model to DTO
+	response := models.ToCurrencyResponse(currency)
+	c.JSON(http.StatusOK, response)
 }
