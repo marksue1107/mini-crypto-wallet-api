@@ -95,8 +95,11 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 		totalPages++
 	}
 
+	// Convert models to DTOs (excludes database relationships)
+	txResponses := models.ToTransactionResponses(txs)
+
 	c.JSON(http.StatusOK, gin.H{
-		"data": txs,
+		"data": txResponses,
 		"pagination": models.PaginationResponse{
 			Page:       pagination.Page,
 			PageSize:   limit,
@@ -113,7 +116,7 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 // @Tags Transactions
 // @Produce json
 // @Param hash path string true "Transaction Hash"
-// @Success 200 {object} models.Transaction
+// @Success 200 {object} models.TransactionResponse
 // @Failure 404 {object} map[string]string
 // @Router /tx/{hash} [get]
 func (h *TransactionHandler) GetTxByHash(c *gin.Context) {
@@ -123,5 +126,8 @@ func (h *TransactionHandler) GetTxByHash(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
 		return
 	}
-	c.JSON(http.StatusOK, tx)
+
+	// Convert model to DTO (excludes database relationships)
+	response := models.ToTransactionResponse(tx)
+	c.JSON(http.StatusOK, response)
 }

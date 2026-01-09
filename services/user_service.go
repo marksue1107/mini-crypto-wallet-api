@@ -25,13 +25,21 @@ func NewUserService(userRepo repositories.IUser, walletRepo repositories.IWallet
 	}
 }
 
-func (s *UserService) CreateUser(user *models.User) error {
-	// 哈希密碼
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+// CreateUser creates a new user from DTO and returns the created user model
+// Accepts DTO to decouple HTTP layer from database layer
+func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, error) {
+	// Hash password from request
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	user.Password = string(hashedPassword)
+
+	// Create database model from DTO
+	user := &models.User{
+		Username: req.Username,
+		Email:    req.Email,
+		Password: string(hashedPassword),
+	}
 
 	// 使用事務確保用戶和錢包創建的原子性
 	tx := db_conn.Conn_DB.MasterDB.Begin()
@@ -39,7 +47,7 @@ func (s *UserService) CreateUser(user *models.User) error {
 
 	if err := s.userRepo.CreateUser(user); err != nil {
 		tx.Rollback()
-		return err
+		return nil, err
 	}
 
 	// 獲取預設幣種（USDT），如果不存在則使用第一個幣種
@@ -48,7 +56,7 @@ func (s *UserService) CreateUser(user *models.User) error {
 		// 如果 USDT 不存在，嘗試獲取第一個幣種
 		currencies, err := s.currencyRepo.GetAllCurrencies()
 		if err != nil || len(currencies) == 0 {
-			return errors.New("no currency available")
+			return nil, errors.New("no currency available")
 		}
 		defaultCurrency = &currencies[0]
 	}
@@ -61,14 +69,14 @@ func (s *UserService) CreateUser(user *models.User) error {
 
 	if err := s.walletRepo.CreateWallet(wallet, tx); err != nil {
 		tx.Rollback()
-		return err
+		return nil, err
 	}
 
 	if commitDB := tx.Commit(); commitDB.Error != nil {
-		return commitDB.Error
+		return nil, commitDB.Error
 	}
 
-	return nil
+	return user, nil
 }
 
 func (s *UserService) Login(username, password string) (*models.User, error) {

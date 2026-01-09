@@ -6,11 +6,22 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// Wallet represents the database model for user wallet data
+// Pure GORM model - no JSON/binding tags for HTTP layer separation
 type Wallet struct {
-	ID         uint            `json:"id" example:"1" gorm:"primarykey"`
-	UserID     uint            `json:"user_id" example:"1" gorm:"index"`
-	CurrencyID uint            `json:"currency_id" example:"1" gorm:"index"`
-	Balance    decimal.Decimal `json:"balance" gorm:"type:decimal(20,8)" swaggertype:"number" example:"1000.0"`
-	CreatedAt  time.Time       `json:"created_at"`
-	Currency   Currency        `json:"currency,omitempty" gorm:"foreignKey:CurrencyID"`
+	ID         uint            `gorm:"primarykey"`
+	UserID     uint            `gorm:"index;not null"`
+	CurrencyID uint            `gorm:"index;not null"`
+	Balance    decimal.Decimal `gorm:"type:decimal(20,8);not null;default:0"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+
+	// Relationships - only for GORM, not exposed directly via HTTP
+	Currency Currency `gorm:"foreignKey:CurrencyID"`
+	User     User     `gorm:"foreignKey:UserID"`
+}
+
+// TableName specifies the table name for GORM
+func (Wallet) TableName() string {
+	return "wallets"
 }

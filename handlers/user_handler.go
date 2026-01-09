@@ -30,21 +30,28 @@ func NewUserHandler(service *services.UserService, jwtManager *auth.JWTManager) 
 // @Tags Users
 // @Accept json
 // @Produce json
-// @Param user body models.User true "User info"
-// @Success 200 {object} map[string]interface{}
+// @Param user body models.UserCreateRequest true "User info"
+// @Success 200 {object} models.UserResponse
 // @Failure 400 {object} map[string]string
 // @Router /users [post]
 func (h *UserHandler) CreateUser(c *gin.Context) {
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	// Bind to DTO instead of database model
+	var req models.UserCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.service.CreateUser(&user); err != nil {
+
+	// Service creates user and returns the created model
+	user, err := h.service.CreateUser(&req)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "user created", "user_id": user.ID})
+
+	// Convert model to response DTO (excludes password)
+	response := models.ToUserResponse(user)
+	c.JSON(http.StatusOK, response)
 }
 
 // Login 用戶登入

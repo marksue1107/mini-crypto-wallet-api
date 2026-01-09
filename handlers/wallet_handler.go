@@ -3,6 +3,7 @@ package handlers
 import (
 	_ "mini-crypto-wallet-api/docs"
 	"mini-crypto-wallet-api/middleware"
+	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/services"
 	"net/http"
 	"strconv"
@@ -26,7 +27,7 @@ func NewWalletHandler(service *services.WalletService) *WalletHandler {
 // @Security BearerAuth
 // @Produce json
 // @Param user_id path int true "User ID"
-// @Success 200 {object} models.Wallet
+// @Success 200 {object} models.WalletResponse
 // @Failure 404 {object} map[string]string
 // @Router /wallet/{user_id} [get]
 func (h *WalletHandler) GetWallet(c *gin.Context) {
@@ -46,5 +47,8 @@ func (h *WalletHandler) GetWallet(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"user_id": wallet.UserID, "balance": wallet.Balance})
+
+	// Convert model to DTO (excludes database relationships)
+	response := models.ToWalletResponse(wallet)
+	c.JSON(http.StatusOK, response)
 }
