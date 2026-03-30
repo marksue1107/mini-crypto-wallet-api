@@ -232,5 +232,4 @@ Feel free to connect or view my profile:
 
 
 - 💼 [LinkedIn – Mark Syue](https://www.linkedin.com/in/syue-mark)
-- 🎂 [CakeResume – Mark Syue](https://www.cake.me/s--i5n7w4G204d-tZ9T8Yv8ww--/mark-syue)
 - 📧 Email: marksue1107@gmail.com
