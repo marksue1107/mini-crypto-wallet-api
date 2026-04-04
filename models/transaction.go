@@ -18,8 +18,8 @@ type Transaction struct {
 	FromUserID uint            `gorm:"index;not null"`
 	ToUserID   uint            `gorm:"index;not null"`
 	Amount     decimal.Decimal `gorm:"type:decimal(20,8);not null"`
-	Hash       string          `gorm:"uniqueIndex;size:64;not null"` // SHA256 hash (64 hex chars)
-	Signature  string          `gorm:"size:255;not null"`            // Transaction signature
+	Hash       string          `gorm:"uniqueIndex;size:64;not null"`       // SHA256 hash (64 hex chars)
+	Signature  string          `gorm:"size:255;not null"`                  // Transaction signature
 	Status     string          `gorm:"size:50;not null;default:'pending'"` // pending, processing, completed, failed, cancelled
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
@@ -37,7 +37,7 @@ func (Transaction) TableName() string {
 // GenerateHash creates a unique SHA256 hash for the transaction
 // Domain logic method - belongs with the model
 func (t *Transaction) GenerateHash() string {
-	data := fmt.Sprintf("%d|%d|%s|%d", t.FromUserID, t.ToUserID, t.Amount.String(), t.CreatedAt.UnixNano())
+	data := fmt.Sprintf("%d|%d|%s|%d", t.FromUserID, t.ToUserID, t.Amount.String(), time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
 }
