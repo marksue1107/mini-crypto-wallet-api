@@ -54,6 +54,7 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	r.POST("/auth/login", userHandler.Login)
 	r.GET("/currencies", currencyHandler.GetCurrencies)
 	r.GET("/currencies/:id", currencyHandler.GetCurrency)
+	r.GET("/tx/:hash", txHandler.GetTxByHash)
 
 	// Protected routes - require authentication
 	authMiddleware := middleware.AuthMiddleware(jwtManager)
@@ -63,7 +64,6 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 		protected.GET("/wallet/:user_id", walletHandler.GetWallet)
 		protected.POST("/wallet/transfer", txHandler.Transfer)
 		protected.GET("/transactions/:user_id", txHandler.GetTransactions)
-		protected.GET("/tx/:hash", txHandler.GetTxByHash)
 	}
 
 	return r
