@@ -201,3 +201,18 @@
 
 ## 新發現
 （執行過程中發現、但 AUDIT.md 未記錄的問題，記在這裡）
+
+### N1（第 0 批發現，嚴重度 Medium，非 Critical，依規則記錄後繼續執行不需停下）
+`docs/docs.go`、`docs/swagger.json`、`docs/swagger.yaml`（swaggo 產生、`main.go` 以
+`_ "mini-crypto-wallet-api/docs"` 匯入的 Go 套件）在稽核當下的 commit（`80e6220`）
+其實**從未被 git 追蹤過**（`git log --all -- docs/docs.go docs/swagger.json
+docs/swagger.yaml` 完全沒有紀錄），只是本地磁碟上長期存在、被舊版 `.gitignore` 的
+`docs/` 規則擋掉沒有被發現。實際影響：任何人全新 `git clone` 這個 repo 之後，在本次
+第 0 批修正之前，`go build ./...` 會直接失敗（`package mini-crypto-wallet-api/docs`
+不存在），必須先手動執行 `swag init` 產生檔案才能建置成功——這代表建置流程長期不可
+重現，只是因為稽核者與原作者本機都剛好已經有這幾個檔案才沒發現。
+處理方式：第 0 批已用 `swag` CLI 在新路徑 `api/docs/` 重新產生並提交進版控（commit
+`8b63a8d`）。後續（第 4 批 A2）重新產生 Swagger 文件時，記得規範「`swag init` 產出的
+檔案必須 commit，不可再被 `.gitignore` 擋掉」，並考慮在 CI 中加一道檢查：重新執行
+`swag init` 後 `git diff --exit-code api/docs` 若有差異就讓 CI 失敗，避免文件再度與
+程式碼註解不同步。
