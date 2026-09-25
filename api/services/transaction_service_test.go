@@ -9,6 +9,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestTransfer_Success_ValidTransfer tests the happy path for a valid transfer
@@ -31,12 +32,15 @@ func TestTransfer_Success_ValidTransfer(t *testing.T) {
 	// Execute
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
 
-	// Assert
-	assert.NoError(t, err)
+	// Assert - require, not assert: a failed transfer means the wallet
+	// lookups below would dereference nil pointers.
+	require.NoError(t, err)
 
 	// Verify balances
-	aliceWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(alice.ID, currency.ID)
-	bobWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(bob.ID, currency.ID)
+	aliceWallet, err := walletRepo.GetWalletByUserIDAndCurrency(alice.ID, currency.ID)
+	require.NoError(t, err)
+	bobWallet, err := walletRepo.GetWalletByUserIDAndCurrency(bob.ID, currency.ID)
+	require.NoError(t, err)
 	assert.Equal(t, "900", aliceWallet.Balance.String())
 	assert.Equal(t, "100", bobWallet.Balance.String())
 
@@ -68,12 +72,12 @@ func TestTransfer_Success_BalanceHistoryRecorded(t *testing.T) {
 
 	// Execute
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify balance history for Alice (debit)
 	var aliceHistory []models.BalanceHistory
 	db.Where("user_id = ?", alice.ID).Find(&aliceHistory)
-	assert.Len(t, aliceHistory, 1)
+	require.Len(t, aliceHistory, 1)
 	assert.Equal(t, "debit", aliceHistory[0].ChangeType)
 	assert.Equal(t, "200", aliceHistory[0].Amount.String())
 	assert.Equal(t, "1000", aliceHistory[0].BalanceBefore.String())
@@ -82,7 +86,7 @@ func TestTransfer_Success_BalanceHistoryRecorded(t *testing.T) {
 	// Verify balance history for Bob (credit)
 	var bobHistory []models.BalanceHistory
 	db.Where("user_id = ?", bob.ID).Find(&bobHistory)
-	assert.Len(t, bobHistory, 1)
+	require.Len(t, bobHistory, 1)
 	assert.Equal(t, "credit", bobHistory[0].ChangeType)
 	assert.Equal(t, "200", bobHistory[0].Amount.String())
 	assert.Equal(t, "500", bobHistory[0].BalanceBefore.String())
@@ -114,21 +118,22 @@ func TestTransfer_Success_TransactionHashGenerated(t *testing.T) {
 
 	// Execute
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(50))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify transaction has hash and signature
 	_, err = txRepo.FindByHash("")
 	assert.Error(t, err) // Should not find empty hash
 
-	txs, _ := txRepo.GetTransactionsByUserID(alice.ID)
-	assert.Len(t, txs, 1)
+	txs, err := txRepo.GetTransactionsByUserID(alice.ID)
+	require.NoError(t, err)
+	require.Len(t, txs, 1)
 	assert.NotEmpty(t, txs[0].Hash)
 	assert.NotEmpty(t, txs[0].Signature)
 	assert.Len(t, txs[0].Hash, 64) // SHA256 produces 64 hex characters
 
 	// Verify we can query by hash
 	foundTx, err := txRepo.FindByHash(txs[0].Hash)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, txs[0].ID, foundTx.ID)
 }
 
@@ -369,13 +374,16 @@ func TestTransfer_ConcurrentTransfers_NoRaceCondition(t *testing.T) {
 	assert.LessOrEqual(t, successfulTransfers, 10)
 
 	// Verify final balance is correct (no lost updates)
-	aliceWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(alice.ID, currency.ID)
+	aliceWallet, err := walletRepo.GetWalletByUserIDAndCurrency(alice.ID, currency.ID)
+	require.NoError(t, err)
 	expectedBalance := 1000 - (successfulTransfers * 100)
 	assert.Equal(t, decimal.NewFromInt(int64(expectedBalance)).String(), aliceWallet.Balance.String())
 
 	// Verify sum of all balances equals initial total (conservation of money)
-	bobWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(bob.ID, currency.ID)
-	charlieWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(charlie.ID, currency.ID)
+	bobWallet, err := walletRepo.GetWalletByUserIDAndCurrency(bob.ID, currency.ID)
+	require.NoError(t, err)
+	charlieWallet, err := walletRepo.GetWalletByUserIDAndCurrency(charlie.ID, currency.ID)
+	require.NoError(t, err)
 	totalBalance := aliceWallet.Balance.Add(bobWallet.Balance).Add(charlieWallet.Balance)
 	assert.Equal(t, "1000", totalBalance.String(), "Total balance should be conserved")
 }
@@ -401,30 +409,36 @@ func TestTransfer_MultipleSequential(t *testing.T) {
 
 	// Execute multiple transfers
 	err1 := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(300))
-	assert.NoError(t, err1)
+	require.NoError(t, err1)
 
 	err2 := service.Transfer(alice.ID, charlie.ID, currency.ID, decimal.NewFromInt(200))
-	assert.NoError(t, err2)
+	require.NoError(t, err2)
 
 	err3 := service.Transfer(bob.ID, charlie.ID, currency.ID, decimal.NewFromInt(100))
-	assert.NoError(t, err3)
+	require.NoError(t, err3)
 
 	// Verify final balances
-	aliceWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(alice.ID, currency.ID)
-	bobWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(bob.ID, currency.ID)
-	charlieWallet, _ := walletRepo.GetWalletByUserIDAndCurrency(charlie.ID, currency.ID)
+	aliceWallet, err := walletRepo.GetWalletByUserIDAndCurrency(alice.ID, currency.ID)
+	require.NoError(t, err)
+	bobWallet, err := walletRepo.GetWalletByUserIDAndCurrency(bob.ID, currency.ID)
+	require.NoError(t, err)
+	charlieWallet, err := walletRepo.GetWalletByUserIDAndCurrency(charlie.ID, currency.ID)
+	require.NoError(t, err)
 
 	assert.Equal(t, "500", aliceWallet.Balance.String())   // 1000 - 300 - 200
 	assert.Equal(t, "200", bobWallet.Balance.String())     // 0 + 300 - 100
 	assert.Equal(t, "300", charlieWallet.Balance.String()) // 0 + 200 + 100
 
 	// Verify transaction count
-	aliceTxs, _ := txRepo.GetTransactionsByUserID(alice.ID)
+	aliceTxs, err := txRepo.GetTransactionsByUserID(alice.ID)
+	require.NoError(t, err)
 	assert.Len(t, aliceTxs, 2) // Alice involved in 2 transactions
 
-	bobTxs, _ := txRepo.GetTransactionsByUserID(bob.ID)
+	bobTxs, err := txRepo.GetTransactionsByUserID(bob.ID)
+	require.NoError(t, err)
 	assert.Len(t, bobTxs, 2) // Bob involved in 2 transactions
 
-	charlieTxs, _ := txRepo.GetTransactionsByUserID(charlie.ID)
+	charlieTxs, err := txRepo.GetTransactionsByUserID(charlie.ID)
+	require.NoError(t, err)
 	assert.Len(t, charlieTxs, 2) // Charlie involved in 2 transactions
 }

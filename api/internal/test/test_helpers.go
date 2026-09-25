@@ -4,21 +4,68 @@ import (
 	"log"
 	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
+	"os"
+	"sync"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	// Use the same pure-Go sqlite driver as production (db_conn/sqlite.go),
+	// registered under the driver name "sqlite" below. This keeps tests
+	// exercising the exact driver behavior (e.g. FOR UPDATE handling) that
+	// production relies on. See docs/AUDIT.md A7.
+	_ "modernc.org/sqlite"
 )
 
-// SetupTestDB initializes an in-memory SQLite database for testing
+// testDBFiles tracks the temp file backing each test DB so CleanupTestDB can
+// remove it. Keyed by *gorm.DB pointer.
+var (
+	testDBFilesMu sync.Mutex
+	testDBFiles   = map[*gorm.DB]string{}
+)
+
+// SetupTestDB initializes a SQLite database for testing, backed by a unique
+// temp file (not ":memory:").
+//
+// SQLite's ":memory:" DSN gives each *distinct connection* its own private,
+// empty database. GORM's connection pool can and does hand out more than one
+// connection per *gorm.DB (e.g. TransactionService.Transfer opens a tx via
+// Begin() on one connection while its repositories run plain, non-tx queries
+// that borrow a second connection from the same pool) — with ":memory:" that
+// second connection sees an empty database and queries spuriously fail with
+// "record not found". A real file on disk doesn't have this problem: every
+// connection in the pool opens the same file and sees the same data, exactly
+// like the production SQLite path in db_conn/sqlite.go. See docs/AUDIT.md M3.
+//
+// (Capping the pool at a single connection was considered and rejected: the
+// mixed tx/non-tx query pattern above needs at least two connections
+// available, or it self-deadlocks waiting for a connection its own
+// transaction is holding.)
 func SetupTestDB() *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+	f, err := os.CreateTemp("", "mini_wallet_test_*.db")
+	if err != nil {
+		log.Fatal("❌ Failed to create temp file for test database:", err)
+	}
+	dbPath := f.Name()
+	f.Close()
+
+	dialector := sqlite.Dialector{
+		DSN:        dbPath,
+		DriverName: "sqlite",
+	}
+
+	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		log.Fatal("❌ Failed to connect to test database:", err)
 	}
+
+	testDBFilesMu.Lock()
+	testDBFiles[db] = dbPath
+	testDBFilesMu.Unlock()
 
 	// Set the global DB connection for repositories
 	db_conn.Conn_DB.MasterDB = db
@@ -38,12 +85,28 @@ func SetupTestDB() *gorm.DB {
 	return db
 }
 
-// CleanupTestDB tears down the test database
+// CleanupTestDB tears down the test database and removes its backing temp
+// file (including any SQLite -journal/-wal/-shm sidecar files).
 func CleanupTestDB(db *gorm.DB) {
-	if db != nil {
-		sqlDB, err := db.DB()
-		if err == nil {
-			sqlDB.Close()
+	if db == nil {
+		return
+	}
+
+	sqlDB, err := db.DB()
+	if err == nil {
+		sqlDB.Close()
+	}
+
+	testDBFilesMu.Lock()
+	dbPath, ok := testDBFiles[db]
+	if ok {
+		delete(testDBFiles, db)
+	}
+	testDBFilesMu.Unlock()
+
+	if ok {
+		for _, suffix := range []string{"", "-journal", "-wal", "-shm"} {
+			os.Remove(dbPath + suffix)
 		}
 	}
 }
