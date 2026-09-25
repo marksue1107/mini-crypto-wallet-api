@@ -254,4 +254,36 @@ pool（乃至 Postgres 本身的 `max_connections`）遲早會被耗盡，屆時
 本來就要整個重寫，建議直接在同一次改動裡把每個提前 return 的路徑都補上
 `tx.Rollback()`（或改用「defer 一個會檢查是否已 commit 的 rollback-safe 收尾函式」的
 寫法，例如 `defer func() { if !committed { tx.Rollback() } }()`），一次修好，避免同一
-段程式碼被改兩次。**已停下回報，等待使用者確認是否併入第 2 批修正**，不自行擴大範圍。
+段程式碼被改兩次。
+
+**使用者決定（已回覆）**：獨立成一個 commit，仍在本次會話處理（不併入第 2 批 M1/M4，
+但不用另外開新的會話）。
+
+### N3（處理 N2 時順帶發現，嚴重度 **Critical**，依規則已停下回報，等待指示）
+`services/user_service.go` 的 `CreateUser()` 註解寫著「使用事務確保用戶和錢包創建的
+原子性」，但實際上**不是原子的**：
+- 第 48 行 `s.userRepo.CreateUser(user)` 呼叫的是 `repositories.IUser.CreateUser(user
+  *models.User) error`（見 `repositories/user_interface.go`），這個介面方法**完全沒有
+  `tx` 參數**，實作內部直接用 `r.DBClient.MasterDB.Create(user)`——也就是說使用者是用
+  **自動提交（autocommit）**寫進去的，根本不在第 45 行開的 `tx` 交易範圍內。
+- 只有第 70 行的 `s.walletRepo.CreateWallet(wallet, tx)` 真的用了 `tx`。
+- 後果：只要「建立 wallet」這一步失敗（無論是第 58-59 行「找不到任何幣別」，還是
+  `CreateWallet` 本身失敗），程式碼會 `tx.Rollback()`，但這個 rollback 只能復原
+  wallet 那筆（原本就沒寫進去），**User 那筆已經真的 commit 了，救不回來**——最終
+  留下一個「有帳號可以登入、但永遠沒有錢包」的孤兒使用者。之後這個使用者呼叫
+  `GetWallet`/`Transfer`/`GetTransactions` 全部都會回報「wallet not found」，帳號
+  形同壞掉，且沒有任何自動修復或告警機制。
+- 這與 N2 是同一類「以為有交易保護、實際上沒有」的問題，且與 N2 完全相同的模式：
+  第 58-59 行的 `return errors.New("no currency available")` 同樣沒有呼叫
+  `tx.Rollback()`，是 N2 那個「提前 return 未 rollback」漏洞的第二個實例
+  （只是這裡因為 CreateUser 根本不在 tx 內，就算補上 rollback 也救不回已經
+  autocommit 的 User 列，需要更根本的修法）。
+
+**處理建議**：`repositories.IUser.CreateUser` 需要比照 `IWallet`/`ITransaction` 的
+`tx ...*gorm.DB` 變參模式，讓呼叫端可以把使用者建立也納入同一個 `tx`，`UserService.
+CreateUser` 才能真的做到「使用者 + 錢包」要嘛一起成功、要嘛一起失敗。這個修改會動到
+`repositories/user_interface.go`、`repositories/user_repository.go`、
+`services/user_service.go` 三個檔案的簽名/呼叫方式，範圍比 N2 略大。
+
+**已停下回報，等待使用者指示**是否比照 N2 做法（獨立成一個 commit，本次會話處理），
+或留到之後另外排程。
