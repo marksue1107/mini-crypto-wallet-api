@@ -233,7 +233,7 @@ docs/swagger.yaml` 完全沒有紀錄），只是本地磁碟上長期存在、�
 `swag init` 後 `git diff --exit-code api/docs` 若有差異就讓 CI 失敗，避免文件再度與
 程式碼註解不同步。
 
-### N2（第 2 批開工前發現，嚴重度 **Critical**，依規則已停下回報，等待指示）
+### N2（第 2 批開工前發現，嚴重度 **Critical** — 狀態：**已修正**，commit `91b515d`）
 `services/transaction_service.go` 的 `Transfer()`：`tx := db_conn.Conn_DB.MasterDB.Begin()`
 （第 42 行）之後，一路到 `tx.Commit()`（第 127 行）之間，所有中途 `return errors.New(...)`
 的地方（第 48、52、58、62、70、81、84、97、111、124 行——包含「餘額不足」、「找不到
@@ -259,7 +259,15 @@ pool（乃至 Postgres 本身的 `max_connections`）遲早會被耗盡，屆時
 **使用者決定（已回覆）**：獨立成一個 commit，仍在本次會話處理（不併入第 2 批 M1/M4，
 但不用另外開新的會話）。
 
-### N3（處理 N2 時順帶發現，嚴重度 **Critical**，依規則已停下回報，等待指示）
+**實際處理結果**：改用「`committed` bool + 單一 deferred 收尾函式」的寫法——沒有
+`committed` 就一律 `tx.Rollback()`（涵蓋 panic 與一般 return 兩種情況），成功 `Commit()`
+後才設 `committed = true`。新增 `TestTransfer_Fail_DoesNotLeakConnection`：連續 5 次
+用「金額超過餘額」觸發失敗的轉帳，每次都斷言 `sqlDB.Stats().InUse == 0`。用
+`git stash` 暫時還原舊版程式碼實際跑過一次，確認這個測試在舊程式碼上真的會 FAIL
+（`InUse` 變成 1），修正後再跑則全數 PASS，證明測試真的有打中這個 bug，不是空的
+斷言。`go test ./... -race -count=3` 通過。
+
+### N3（處理 N2 時順帶發現，嚴重度 **Critical** — 狀態：**已修正**，commit `8f98567`）
 `services/user_service.go` 的 `CreateUser()` 註解寫著「使用事務確保用戶和錢包創建的
 原子性」，但實際上**不是原子的**：
 - 第 48 行 `s.userRepo.CreateUser(user)` 呼叫的是 `repositories.IUser.CreateUser(user
@@ -285,5 +293,16 @@ CreateUser` 才能真的做到「使用者 + 錢包」要嘛一起成功、要�
 `repositories/user_interface.go`、`repositories/user_repository.go`、
 `services/user_service.go` 三個檔案的簽名/呼叫方式，範圍比 N2 略大。
 
-**已停下回報，等待使用者指示**是否比照 N2 做法（獨立成一個 commit，本次會話處理），
-或留到之後另外排程。
+**使用者決定（已回覆）**：比照 N2，獨立成一個 commit，本次會話處理。
+
+**實際處理結果**：`IUser.CreateUser` 簽名改成 `CreateUser(user *models.User, tx
+...*gorm.DB) error`（比照 `IWallet`/`ITransaction` 既有的變參模式），`user_repository.go`
+的實作與 `UserService.CreateUser` 呼叫端都改用同一個 `tx`；同時把「找不到任何幣別」
+那條路徑也套用跟 N2 一樣的 `committed` flag 收尾寫法。順手刪除 `utils.RollbackIfPanic`
+（`utils/transaction.go` 整個檔案）——它只處理 panic 這一種情況，正是 N2/N3 兩個
+bug 能一路潛伏的原因，且修完後已無任何呼叫端。新增 `services/user_service_test.go`：
+`TestCreateUser_Fail_NoCurrency_DoesNotOrphanUser`（刻意讓資料庫沒有任何幣別，逼
+`CreateUser` 走到失敗路徑，斷言 User 資料表裡不會留下孤兒帳號）與
+`TestCreateUser_Success`（正常建立流程，確認錢包確實一起建立）。同樣用 `git stash`
++ `git show HEAD:...` 暫時還原舊版三個檔案，確認 orphan 測試在舊程式碼上真的會 FAIL
+（能撈到孤兒使用者），修正後轉為 PASS。`go test ./... -race -count=3` 通過。
