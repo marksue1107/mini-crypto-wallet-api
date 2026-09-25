@@ -27,7 +27,7 @@ func TestTransfer_Success_ValidTransfer(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
@@ -68,7 +68,7 @@ func TestTransfer_Success_BalanceHistoryRecorded(t *testing.T) {
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
 	balanceHistoryRepo := repositories.NewBalanceHistoryRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
@@ -114,7 +114,7 @@ func TestTransfer_Success_TransactionHashGenerated(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(50))
@@ -155,7 +155,7 @@ func TestTransfer_Fail_DoesNotLeakConnection(t *testing.T) {
 
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
@@ -183,7 +183,7 @@ func TestTransfer_Fail_InsufficientBalance(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer 200 (more than balance)
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
@@ -216,7 +216,7 @@ func TestTransfer_Fail_SameAccountTransfer(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer to same account
 	err := service.Transfer(alice.ID, alice.ID, currency.ID, decimal.NewFromInt(100))
@@ -245,7 +245,7 @@ func TestTransfer_Fail_NegativeAmount(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try negative amount
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(-100))
@@ -270,7 +270,7 @@ func TestTransfer_Fail_ZeroAmount(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try zero amount
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.Zero)
@@ -278,6 +278,67 @@ func TestTransfer_Fail_ZeroAmount(t *testing.T) {
 	// Assert
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "amount must be positive")
+}
+
+// TestTransfer_Fail_TooManyDecimalPlaces verifies an amount with more decimal
+// places than the currency supports is rejected. See docs/AUDIT.md M6.
+func TestTransfer_Fail_TooManyDecimalPlaces(t *testing.T) {
+	// Setup
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
+
+	currency := test.CreateTestCurrency(db, "USDT") // Decimals: 8
+	alice := test.CreateTestUser(db, "alice")
+	bob := test.CreateTestUser(db, "bob")
+	test.CreateTestWallet(db, alice.ID, currency.ID, 1000)
+	test.CreateTestWallet(db, bob.ID, currency.ID, 0)
+
+	// Create service
+	walletRepo := repositories.NewWalletRepository()
+	txRepo := repositories.NewTransactionRepository()
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
+
+	// Execute - 9 decimal places, currency only supports 8
+	amount, err := decimal.NewFromString("1.123456789")
+	require.NoError(t, err)
+	err = service.Transfer(alice.ID, bob.ID, currency.ID, amount)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "decimal places")
+
+	// Verify balance unchanged
+	aliceWallet, err := walletRepo.GetWalletByUserIDAndCurrency(alice.ID, currency.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "1000", aliceWallet.Balance.String())
+}
+
+// TestTransfer_Fail_ExceedsMaxAmount verifies an amount over the configured
+// maximum transfer limit is rejected. See docs/AUDIT.md M6.
+func TestTransfer_Fail_ExceedsMaxAmount(t *testing.T) {
+	// Setup
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
+
+	currency := test.CreateTestCurrency(db, "USDT")
+	alice := test.CreateTestUser(db, "alice")
+	bob := test.CreateTestUser(db, "bob")
+	// Give alice enough balance that, if the limit check were missing,
+	// the transfer would otherwise succeed.
+	test.CreateTestWalletWithDecimal(db, alice.ID, currency.ID, decimal.RequireFromString("100000000"))
+	test.CreateTestWallet(db, bob.ID, currency.ID, 0)
+
+	// Create service
+	walletRepo := repositories.NewWalletRepository()
+	txRepo := repositories.NewTransactionRepository()
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
+
+	// Execute - exceeds DefaultMaxTransferAmount (1,000,000)
+	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(2_000_000))
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum transfer limit")
 }
 
 // TestTransfer_Fail_FromWalletNotFound verifies error when source wallet doesn't exist
@@ -293,7 +354,7 @@ func TestTransfer_Fail_FromWalletNotFound(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer from non-existent user ID 999
 	err := service.Transfer(999, bob.ID, currency.ID, decimal.NewFromInt(100))
@@ -316,7 +377,7 @@ func TestTransfer_Fail_ToWalletNotFound(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer to non-existent user ID 999
 	err := service.Transfer(alice.ID, 999, currency.ID, decimal.NewFromInt(100))
@@ -342,7 +403,7 @@ func TestTransfer_Fail_InvalidCurrency(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer with mismatched currency (Alice USDT → Bob BTC)
 	err := service.Transfer(alice.ID, bob.ID, usdtCurrency.ID, decimal.NewFromInt(100))
@@ -369,7 +430,7 @@ func TestTransfer_ConcurrentTransfers_NoRaceCondition(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - 5 concurrent transfers of 100 each from Alice
 	var wg sync.WaitGroup
@@ -436,7 +497,7 @@ func TestTransfer_MultipleSequential(t *testing.T) {
 	// Create service
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute multiple transfers
 	err1 := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(300))

@@ -81,7 +81,7 @@ func TestConcurrentTransfers(t *testing.T) {
 
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	txService := services.NewTransactionService(walletRepo, txRepo, nil)
+	txService := services.NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	currency := &models.Currency{Code: "USDT", Name: "Tether", Symbol: "$", Decimals: 8, IsActive: true}
 	require.NoError(t, db.Create(currency).Error)
@@ -157,7 +157,7 @@ func simulateConcurrentTransfers(t *testing.T, service *services.TransactionServ
 // simulateUnsafeTransfer reproduces the classic read-modify-write race
 // (read balance, compute new balance, write it back, all without a
 // transaction or row lock) that TransactionService.Transfer() avoids by
-// using GetWalletByUserIDWithTx's row lock. This is deliberately unsafe and
+// using GetWalletByUserIDAndCurrencyWithTx's row lock. This is deliberately unsafe and
 // exists only to demonstrate the race in TestConcurrentTransfers above — it
 // must never be used outside of this test file. See docs/AUDIT.md A6 (this
 // used to live in production code as TransactionService.TransferWithLockOption).

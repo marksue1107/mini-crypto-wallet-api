@@ -27,7 +27,7 @@ func (r *walletRepository) GetWalletByUserID(userID uint) (*models.Wallet, error
 	return &wallet, nil
 }
 
-func (r *walletRepository) GetWalletByUserIDWithTx(userID uint, tx ...*gorm.DB) (*models.Wallet, error) {
+func (r *walletRepository) GetWalletByUserIDAndCurrencyWithTx(userID uint, currencyID uint, tx ...*gorm.DB) (*models.Wallet, error) {
 	var db *gorm.DB = r.DBClient.MasterDB
 	if len(tx) > 0 {
 		db = tx[0]
@@ -35,7 +35,9 @@ func (r *walletRepository) GetWalletByUserIDWithTx(userID uint, tx ...*gorm.DB) 
 
 	var wallet models.Wallet
 
-	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", userID).First(&wallet).Error; err != nil {
+	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("user_id = ? AND currency_id = ?", userID, currencyID).
+		First(&wallet).Error; err != nil {
 		return nil, err
 	}
 

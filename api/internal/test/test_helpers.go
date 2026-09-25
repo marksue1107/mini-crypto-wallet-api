@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"log"
 	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
@@ -25,6 +26,10 @@ var (
 	testDBFilesMu sync.Mutex
 	testDBFiles   = map[*gorm.DB]string{}
 )
+
+// sqliteBusyTimeoutMillis mirrors db_conn.sqliteBusyTimeoutMillis (kept as a
+// separate constant since that one is unexported).
+const sqliteBusyTimeoutMillis = 5000
 
 // SetupTestDB initializes a SQLite database for testing, backed by a unique
 // temp file (not ":memory:").
@@ -61,6 +66,14 @@ func SetupTestDB() *gorm.DB {
 	})
 	if err != nil {
 		log.Fatal("❌ Failed to connect to test database:", err)
+	}
+
+	// Match production's db_conn/sqlite.go: without this, concurrent
+	// transfer tests (multiple goroutines writing at close to the same
+	// moment) hit a hard SQLITE_BUSY "database is locked" error instead of
+	// one writer briefly waiting for the other.
+	if err := db.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", sqliteBusyTimeoutMillis)).Error; err != nil {
+		log.Fatal("❌ Failed to set SQLite busy_timeout:", err)
 	}
 
 	testDBFilesMu.Lock()

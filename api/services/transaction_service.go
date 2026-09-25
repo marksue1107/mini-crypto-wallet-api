@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"mini-crypto-wallet-api/db_conn"
+	"mini-crypto-wallet-api/internal/config"
 	"mini-crypto-wallet-api/kafka_client"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
@@ -13,19 +14,34 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// DefaultMaxTransferAmount is used when config.Config.MaxTransferAmount is
+// empty or fails to parse. See docs/AUDIT.md M6.
+const DefaultMaxTransferAmount = "1000000"
+
 type TransactionService struct {
 	walletRepo         repositories.IWallet
 	transactionRepo    repositories.ITransaction
+	currencyRepo       repositories.ICurrency
 	balanceHistoryRepo repositories.IBalanceHistory
 	kafkaProducer      *kafka_client.KafkaProducer
+	maxTransferAmount  decimal.Decimal
 }
 
-func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.ITransaction, producer *kafka_client.KafkaProducer) *TransactionService {
+func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.ITransaction, currencyRepo repositories.ICurrency, producer *kafka_client.KafkaProducer) *TransactionService {
+	maxAmount := decimal.RequireFromString(DefaultMaxTransferAmount)
+	if config.Config != nil && config.Config.MaxTransferAmount != "" {
+		if parsed, err := decimal.NewFromString(config.Config.MaxTransferAmount); err == nil {
+			maxAmount = parsed
+		}
+	}
+
 	return &TransactionService{
 		walletRepo:         walletRepo,
 		transactionRepo:    txRepo,
+		currencyRepo:       currencyRepo,
 		balanceHistoryRepo: repositories.NewBalanceHistoryRepository(),
 		kafkaProducer:      producer,
+		maxTransferAmount:  maxAmount,
 	}
 }
 
@@ -37,6 +53,17 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	// 驗證金額
 	if !utils.ValidatePositiveAmount(amount) {
 		return errors.New("amount must be positive")
+	}
+	if amount.GreaterThan(s.maxTransferAmount) {
+		return errors.New("amount exceeds maximum transfer limit")
+	}
+
+	currency, err := s.currencyRepo.GetCurrencyByID(currencyID)
+	if err != nil {
+		return errors.New("currency not found")
+	}
+	if !amount.Equal(amount.Round(int32(currency.Decimals))) {
+		return errors.New("amount has more decimal places than this currency supports")
 	}
 
 	tx := db_conn.Conn_DB.MasterDB.Begin()
@@ -59,28 +86,45 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 		tx.Rollback()
 	}()
 
-	// 使用幣種查詢錢包
-	fromWallet, err := s.walletRepo.GetWalletByUserIDAndCurrency(fromID, currencyID)
-	if err != nil {
-		return errors.New("from_user wallet not found for this currency")
+	// Lock both wallets in a fixed order (ascending user_id), regardless of
+	// which one is "from" and which is "to". Locking in caller-argument
+	// order would let a concurrent A->B transfer and B->A transfer each grab
+	// one lock and then wait forever for the other (classic deadlock). See
+	// docs/AUDIT.md M1.
+	//
+	// GetWalletByUserIDAndCurrencyWithTx also locks based on (user_id,
+	// currency_id) together, not user_id alone: a user can hold more than
+	// one wallet (one per currency), so filtering by currency_id in the
+	// locked query itself - rather than fetching by user_id alone and
+	// checking CurrencyID afterwards - matters once multi-currency wallets
+	// exist. See docs/AUDIT.md M4.
+	lowID, highID := fromID, toID
+	if highID < lowID {
+		lowID, highID = highID, lowID
 	}
-	toWallet, err := s.walletRepo.GetWalletByUserIDAndCurrency(toID, currencyID)
-	if err != nil {
+
+	walletNotFoundErr := func(userID uint) error {
+		if userID == fromID {
+			return errors.New("from_user wallet not found for this currency")
+		}
 		return errors.New("to_user wallet not found for this currency")
 	}
 
-	// 使用行鎖更新錢包
-	fromWalletLocked, err := s.walletRepo.GetWalletByUserIDWithTx(fromID, tx)
-	if err != nil || fromWalletLocked.CurrencyID != currencyID {
-		return errors.New("from_user wallet not found for this currency")
+	lowWallet, err := s.walletRepo.GetWalletByUserIDAndCurrencyWithTx(lowID, currencyID, tx)
+	if err != nil {
+		return walletNotFoundErr(lowID)
 	}
-	toWalletLocked, err := s.walletRepo.GetWalletByUserIDWithTx(toID, tx)
-	if err != nil || toWalletLocked.CurrencyID != currencyID {
-		return errors.New("to_user wallet not found for this currency")
+	highWallet, err := s.walletRepo.GetWalletByUserIDAndCurrencyWithTx(highID, currencyID, tx)
+	if err != nil {
+		return walletNotFoundErr(highID)
 	}
 
-	fromWallet = fromWalletLocked
-	toWallet = toWalletLocked
+	var fromWallet, toWallet *models.Wallet
+	if fromID == lowID {
+		fromWallet, toWallet = lowWallet, highWallet
+	} else {
+		fromWallet, toWallet = highWallet, lowWallet
+	}
 
 	// 使用 decimal 比較
 	if fromWallet.Balance.LessThan(amount) {

@@ -21,7 +21,7 @@ func TestSimpleTransfer(t *testing.T) {
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
 	currencyRepo := repositories.NewCurrencyRepository()
-	service := NewTransactionService(walletRepo, txRepo, nil)
+	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Create currency
 	currency := &models.Currency{

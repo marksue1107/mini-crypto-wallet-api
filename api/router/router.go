@@ -35,7 +35,7 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	// Init service
 	userService := services.NewUserService(userRepo, walletRepo, currencyRepo)
 	walletService := services.NewWalletService(walletRepo)
-	txService := services.NewTransactionService(walletRepo, txRepo, producer)
+	txService := services.NewTransactionService(walletRepo, txRepo, currencyRepo, producer)
 	currencyService := services.NewCurrencyService(currencyRepo)
 
 	// Init handlers
