@@ -117,14 +117,14 @@ Database (PostgreSQL/SQLite)
 
 ## 🧪 Testing
 
-Run all tests:
+Run all tests (from the `api/` module root):
 ```bash
-go test ./... -v
+cd api && go test ./... -v
 ```
 
 Run concurrency safety demonstration:
 ```bash
-go test ./internal/test -v -run TestConcurrentTransfers
+cd api && go test ./internal/test -v -run TestConcurrentTransfers
 ```
 
 This test compares transfer behavior with and without database locking, proving the concurrency safety implementation.
@@ -192,17 +192,22 @@ This test compares transfer behavior with and without database locking, proving 
 
 ### 1. Build the Docker image
 
+The Go module and Dockerfile live under `api/`:
+
 ```bash
-docker build -t mini-wallet-api .
+docker build -t mini-wallet-api ./api
 ```
 
 ### 2. Start Kafka and PostgreSQL
 
-Use the provided `docker-compose.kafka.yml` file to launch the
-supporting services:
+> ⚠️ This step is currently being reworked — see `docs/AUDIT_REMEDIATION_PLAN.md`
+> (Batch 5 / Q6, A3). `docker-compose.yml` at the repo root currently only
+> starts `zookeeper`, `kafka`, and `postgres`; it does not yet include the API
+> service itself, and the `docker-compose.kafka.yml` filename below does not
+> exist yet.
 
 ```bash
-docker compose -f docker-compose.kafka.yml up -d
+docker compose up -d
 ```
 
 ### 3. Run the API container
