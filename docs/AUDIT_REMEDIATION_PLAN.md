@@ -74,11 +74,11 @@
 ## 第 1 批：讓測試可信賴，並加上 CI
 對應：M3、Q1、Q10、A6、A7
 
-- [ ] 測試 DB：統一使用 `modernc.org/sqlite` 對應的 dialector（與正式環境相同），改用暫存檔案 SQLite 或對 in-memory 設定 `SetMaxOpenConns(1)`
-- [ ] 金流相關測試的前置條件與關鍵斷言改用 `require`
-- [ ] 將 `TransferWithLockOption` 及其不安全示範邏輯移到 `_test.go` 檔，正式程式碼移除 `import "testing"`
-- [ ] `TestConcurrentTransfers` 改用 testcontainers-go 啟動一次性 Postgres；無 Docker 時 `t.Skip`，不可 `log.Fatal`
-- [ ] 新增 `.github/workflows/api.yml`：`paths: ['api/**']` 觸發，執行 `go build ./...`、`go vet ./...`、`go test ./... -race`
+- [x] 測試 DB：統一使用 `modernc.org/sqlite` 對應的 dialector（與正式環境相同），改用暫存檔案 SQLite 或對 in-memory 設定 `SetMaxOpenConns(1)`
+- [x] 金流相關測試的前置條件與關鍵斷言改用 `require`
+- [x] 將 `TransferWithLockOption` 及其不安全示範邏輯移到 `_test.go` 檔，正式程式碼移除 `import "testing"`
+- [x] `TestConcurrentTransfers` 改用 testcontainers-go 啟動一次性 Postgres；無 Docker 時 `t.Skip`，不可 `log.Fatal`
+- [x] 新增 `.github/workflows/api.yml`：`paths: ['api/**']` 觸發，執行 `go build ./...`、`go vet ./...`、`go test ./... -race`
 
 **驗收條件**
 - `cd api && go test ./... -race` 全部通過，無 panic
@@ -87,7 +87,23 @@
 - workflow YAML 語法正確（可用 `python -c "import yaml; yaml.safe_load(open('.github/workflows/api.yml'))"` 檢查）
 
 **驗證紀錄**
-（待填寫）
+- **M3 根因與修法**：`internal/test/test_helpers.go` 原本用 `sqlite.Open(":memory:")`。SQLite 的 `:memory:` DSN 是「每個實體連線各自一份空資料庫」，而 GORM 的連線池在單一 `*gorm.DB` 上本來就會視情況借出不只一條連線——`TransactionService.Transfer()` 正是這種情況：`tx := ...Begin()` 用掉一條連線做交易，緊接著 `s.walletRepo.GetWalletByUserIDAndCurrency(...)` 卻是用**非交易**的一般查詢（沒有帶 `tx`），可能向同一個連線池借到**另一條**連線，而那條連線在 `:memory:` 模式下看到的是全新的空資料庫，於是回報「wallet not found」。改為每次 `SetupTestDB()` 都建立一個唯一的暫存檔案（`os.CreateTemp` + `gorm.io/driver/sqlite` 的 `Dialector{DriverName:"sqlite"}` 指向 `modernc.org/sqlite`，與正式環境 `db_conn/sqlite.go` 用同一顆 driver，回應 A7），檔案型資料庫天生就是「所有連線看到同一份資料」，問題自然消失，且不需要限制連線池大小。
+  - 中途也試過「`:memory:` + `SetMaxOpenConns(1)`」這個更常見的建議解法，但**會直接造成自我死結**：`Transfer()` 的 `tx.Begin()` 用掉唯一的一條連線，緊接著同一個 goroutine 內的非交易查詢要再借一條連線，但整個池只有 1 條、還被自己的交易鎖著，永遠借不到，測試整組 hang 住。已改回檔案型方案，不再嘗試單連線池。
+  - `CleanupTestDB` 同步更新為關閉連線後刪除暫存檔（含 `-journal`/`-wal`/`-shm` 側車檔），用一個 `sync.Map`（`*gorm.DB` → 檔案路徑）追蹤，呼叫端簽名完全不用改。
+- **require 修正**：`transaction_service_test.go` 中，凡是「這一步失敗，下一步就會對 nil 解參考」的地方全部從 `assert` 改成 `require`：`TestTransfer_Success_ValidTransfer`、`TestTransfer_Success_BalanceHistoryRecorded`、`TestTransfer_Success_TransactionHashGenerated`、`TestTransfer_MultipleSequential`、`TestTransfer_ConcurrentTransfers_NoRaceCondition` 的關鍵 `err`/`len` 檢查，並且不再用 `_` 丟棄 repository 查詢的 error 就直接解參考。
+- **A6**：`services/transaction_service.go` 移除 `import "testing"`、移除 `TransferWithLockOption` 與其「tester」註解區塊。`internal/test/concurrency_demo_test.go` 改寫：不安全示範邏輯搬進測試檔自己的 `simulateUnsafeTransfer()`（透過公開的 `repositories.IWallet` 介面實作，不再需要碰 `TransactionService` 私有欄位），`useLock=true` 的情境直接呼叫正式的 `service.Transfer()`。
+- **Q10 / testcontainers**：`TestConcurrentTransfers` 改成用 `testcontainers-go` + `modules/postgres` 啟動一次性 Postgres，換掉原本會在本機沒有 Postgres 時 `log.Fatal`（整個測試 process 直接退出）的 `config.LoadConfig()+db_conn.InitDatabase()`。新增 `dockerAvailable()`（`exec.LookPath("docker")` + 3 秒逾時的 `docker info`）在偵測不到可用 Docker daemon 時 `t.Skip(...)`，不會讓整個套件失敗。同時把原本只印餘額給人看的示範，加上真正的斷言（鎖定路徑下餘額不可為負、轉帳雙方餘額總和必須守恆）。
+  - `go get github.com/testcontainers/testcontainers-go@latest github.com/testcontainers/testcontainers-go/modules/postgres@latest github.com/jackc/pgx/v5@latest` 後執行 `go mod tidy` 讓 go.sum 收斂；副作用：`go.mod` 的 `go` 版本指示被工具鏈自動調整為 `go 1.25.0`（由新依賴的最低需求版本決定），CI workflow 用 `actions/setup-go@v5` 的 `go-version-file: api/go.mod` 讀取，不寫死版本號，避免之後再次漂移。
+- **Q1 / CI**：新增 `.github/workflows/api.yml`（`working-directory: api`，`paths: ['api/**', '.github/workflows/api.yml']` 觸發，依序 `go build ./...`、`go vet ./...`、`go test ./... -race -count=1`）。GitHub-hosted ubuntu runner 預裝 Docker，`TestConcurrentTransfers` 在 CI 上會是真的跑過 testcontainers，不會走到 skip 分支。YAML 語法用 `ruby -ryaml`（本機沒有可用的 `python3 yaml` 套件，改用內建的 Ruby psych）驗證通過。
+- **實際執行結果**（本機 Docker Desktop 有啟動，非「環境不足」情況，已完整驗證）：
+  - `go build ./...` / `go vet ./...`：通過，無輸出。
+  - `go test ./... -race -count=1`：全部 `ok`，`internal/test` 的 `TestConcurrentTransfers` 真的對容器化 Postgres 跑過一次（未加鎖示範印出 A=0/B=800，加鎖路徑同樣 A=0/B=800 且斷言金額守恆與非負皆通過）。
+  - `go test ./... -race -count=3`：連續三次皆 `ok`，未見任何 panic 或 flaky 失敗。
+  - `grep -rn '"testing"' api --include='*.go' | grep -v '_test.go'`：無輸出。
+- Commits（本批）：
+  - `16bf545` fix(M3): make transfer test suite reliable, not flaky
+  - `894b184` fix(A6,Q10): remove test-only code from production, run concurrency demo against real Postgres
+  - `212bdd8` fix(Q1): add CI workflow to run build/vet/test -race on every change
 
 ---
 
