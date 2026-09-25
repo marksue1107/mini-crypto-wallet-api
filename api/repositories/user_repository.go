@@ -36,6 +36,14 @@ func (r *userRepository) GetUserByUsername(username string) (*models.User, error
 	return &user, nil
 }
 
+func (r *userRepository) GetUserByEmail(email string) (*models.User, error) {
+	var user models.User
+	if err := r.DBClient.MasterDB.Where("email = ?", email).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *userRepository) GetUserByID(userID uint) (*models.User, error) {
 	var user models.User
 	if err := r.DBClient.MasterDB.Where("id = ?", userID).First(&user).Error; err != nil {

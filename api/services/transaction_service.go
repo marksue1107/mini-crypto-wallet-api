@@ -138,11 +138,16 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	fromWallet.Balance = fromWallet.Balance.Sub(amount)
 	toWallet.Balance = toWallet.Balance.Add(amount)
 
+	// From here on, any DB error is unexpected (not a validation failure)
+	// so it's logged with detail and replaced with a generic message before
+	// returning - see docs/AUDIT.md S9.
 	if err := s.walletRepo.UpdateWallet(fromWallet, tx); err != nil {
-		return err
+		log.Println("⚠️ failed to update from_wallet during transfer:", err)
+		return errors.New("transfer failed, please try again")
 	}
 	if err := s.walletRepo.UpdateWallet(toWallet, tx); err != nil {
-		return err
+		log.Println("⚠️ failed to update to_wallet during transfer:", err)
+		return errors.New("transfer failed, please try again")
 	}
 
 	transaction := &models.Transaction{
@@ -155,7 +160,8 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	transaction.Signature = transaction.GenerateSignature()
 
 	if err := s.transactionRepo.CreateTransaction(transaction, tx); err != nil {
-		return err
+		log.Println("⚠️ failed to create transaction record during transfer:", err)
+		return errors.New("transfer failed, please try again")
 	}
 
 	// 記錄餘額變動歷史
@@ -169,7 +175,8 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 		BalanceAfter:  fromWallet.Balance,
 	}
 	if err := s.balanceHistoryRepo.CreateHistory(fromHistory, tx); err != nil {
-		return err
+		log.Println("⚠️ failed to record from_user balance history during transfer:", err)
+		return errors.New("transfer failed, please try again")
 	}
 
 	toHistory := &models.BalanceHistory{
@@ -182,11 +189,16 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 		BalanceAfter:  toWallet.Balance,
 	}
 	if err := s.balanceHistoryRepo.CreateHistory(toHistory, tx); err != nil {
-		return err
+		log.Println("⚠️ failed to record to_user balance history during transfer:", err)
+		return errors.New("transfer failed, please try again")
 	}
 
 	if commitDB := tx.Commit(); commitDB.Error != nil {
-		return commitDB.Error
+		// Log the real DB error for operators; don't return it to the
+		// caller, since it can contain internal details (table/constraint
+		// names, driver-specific text). See docs/AUDIT.md S9.
+		log.Println("⚠️ failed to commit transfer transaction:", commitDB.Error)
+		return errors.New("transfer failed, please try again")
 	}
 	committed = true
 

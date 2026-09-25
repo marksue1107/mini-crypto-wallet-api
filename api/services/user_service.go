@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"log"
 	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
@@ -9,6 +10,13 @@ import (
 	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// ErrUserAlreadyExists is returned by CreateUser when the requested
+// username or email is already taken. Handlers should map this to
+// HTTP 409 + errors.ErrCodeUserAlreadyExists rather than a generic 500 -
+// this is a routine, expected client error, not a server failure.
+// See docs/AUDIT.md S7.
+var ErrUserAlreadyExists = errors.New("username or email already exists")
 
 type UserService struct {
 	userRepo     repositories.IUser
@@ -27,6 +35,16 @@ func NewUserService(userRepo repositories.IUser, walletRepo repositories.IWallet
 // CreateUser creates a new user from DTO and returns the created user model
 // Accepts DTO to decouple HTTP layer from database layer
 func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, error) {
+	// Reject duplicate username/email up front with a specific, expected
+	// error rather than letting it surface as a generic DB/500 error from
+	// the unique constraint violation at insert time. See docs/AUDIT.md S7.
+	if _, err := s.userRepo.GetUserByUsername(req.Username); err == nil {
+		return nil, ErrUserAlreadyExists
+	}
+	if _, err := s.userRepo.GetUserByEmail(req.Email); err == nil {
+		return nil, ErrUserAlreadyExists
+	}
+
 	// Hash password from request
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -64,7 +82,8 @@ func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, e
 	// below could never undo it - leaving an orphaned user with no wallet
 	// (docs/AUDIT_REMEDIATION_PLAN.md finding N3).
 	if err := s.userRepo.CreateUser(user, tx); err != nil {
-		return nil, err
+		log.Println("⚠️ failed to create user record:", err)
+		return nil, errors.New("failed to create user")
 	}
 
 	// 獲取預設幣種（USDT），如果不存在則使用第一個幣種
@@ -85,11 +104,16 @@ func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, e
 	}
 
 	if err := s.walletRepo.CreateWallet(wallet, tx); err != nil {
-		return nil, err
+		log.Println("⚠️ failed to create wallet during user creation:", err)
+		return nil, errors.New("failed to create user")
 	}
 
 	if commitDB := tx.Commit(); commitDB.Error != nil {
-		return nil, commitDB.Error
+		// Log the real DB error for operators; don't return it to the
+		// caller, since it can contain internal details (table/constraint
+		// names, driver-specific text). See docs/AUDIT.md S9.
+		log.Println("⚠️ failed to commit user creation transaction:", commitDB.Error)
+		return nil, errors.New("failed to create user")
 	}
 	committed = true
 

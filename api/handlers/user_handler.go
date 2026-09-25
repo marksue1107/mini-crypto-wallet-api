@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"errors"
 	"mini-crypto-wallet-api/internal/auth"
+	internalerrors "mini-crypto-wallet-api/internal/errors"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/services"
 	"time"
@@ -33,6 +35,7 @@ func NewUserHandler(service *services.UserService, jwtManager *auth.JWTManager) 
 // @Param user body models.UserCreateRequest true "User info"
 // @Success 200 {object} models.UserResponse
 // @Failure 400 {object} map[string]string
+// @Failure 409 {object} map[string]string
 // @Router /users [post]
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	// Bind to DTO instead of database model
@@ -45,6 +48,13 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	// Service creates user and returns the created model
 	user, err := h.service.CreateUser(&req)
 	if err != nil {
+		if errors.Is(err, services.ErrUserAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": err.Error(),
+				"code":  internalerrors.ErrCodeUserAlreadyExists,
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}

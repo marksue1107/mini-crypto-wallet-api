@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"testing"
 
 	"mini-crypto-wallet-api/internal/test"
@@ -59,4 +60,45 @@ func TestCreateUser_Success(t *testing.T) {
 	wallet, err := walletRepo.GetWalletByUserIDAndCurrency(user.ID, currency.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "1000", wallet.Balance.String())
+}
+
+// TestCreateUser_Fail_DuplicateUsername verifies a repeated username is
+// rejected with ErrUserAlreadyExists (mapped to HTTP 409 by the handler),
+// not a generic error. See docs/AUDIT.md S7.
+func TestCreateUser_Fail_DuplicateUsername(t *testing.T) {
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
+	test.CreateTestCurrency(db, "USDT")
+
+	userRepo := repositories.NewUserRepository()
+	walletRepo := repositories.NewWalletRepository()
+	currencyRepo := repositories.NewCurrencyRepository()
+	service := NewUserService(userRepo, walletRepo, currencyRepo)
+
+	_, err := service.CreateUser(&models.UserCreateRequest{Username: "alice", Email: "alice@example.com", Password: "password123"})
+	require.NoError(t, err)
+
+	_, err = service.CreateUser(&models.UserCreateRequest{Username: "alice", Email: "different@example.com", Password: "password123"})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrUserAlreadyExists))
+}
+
+// TestCreateUser_Fail_DuplicateEmail verifies a repeated email is rejected
+// the same way, even with a different username. See docs/AUDIT.md S7.
+func TestCreateUser_Fail_DuplicateEmail(t *testing.T) {
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
+	test.CreateTestCurrency(db, "USDT")
+
+	userRepo := repositories.NewUserRepository()
+	walletRepo := repositories.NewWalletRepository()
+	currencyRepo := repositories.NewCurrencyRepository()
+	service := NewUserService(userRepo, walletRepo, currencyRepo)
+
+	_, err := service.CreateUser(&models.UserCreateRequest{Username: "alice", Email: "shared@example.com", Password: "password123"})
+	require.NoError(t, err)
+
+	_, err = service.CreateUser(&models.UserCreateRequest{Username: "alice2", Email: "shared@example.com", Password: "password123"})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrUserAlreadyExists))
 }

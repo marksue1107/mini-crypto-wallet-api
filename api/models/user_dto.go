@@ -8,7 +8,7 @@ import "time"
 type UserCreateRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=50" example:"alice"`
 	Email    string `json:"email" binding:"required,email" example:"alice@example.com"`
-	Password string `json:"password" binding:"required,min=6" example:"password123"`
+	Password string `json:"password" binding:"required,min=8" example:"password123"`
 }
 
 // UserResponse represents the HTTP response for user data
