@@ -18,6 +18,21 @@ import (
 // empty or fails to parse. See docs/AUDIT.md M6.
 const DefaultMaxTransferAmount = "1000000"
 
+// Sentinel errors for Transfer(), so handlers can map each one to a stable
+// error code for API consumers (docs/AUDIT.md S8) via errors.Is, instead of
+// pattern-matching on error message text.
+var (
+	ErrSameAccountTransfer  = errors.New("cannot transfer to the same account")
+	ErrAmountMustBePositive = errors.New("amount must be positive")
+	ErrAmountExceedsLimit   = errors.New("amount exceeds maximum transfer limit")
+	ErrCurrencyNotFound     = errors.New("currency not found")
+	ErrTooManyDecimalPlaces = errors.New("amount has more decimal places than this currency supports")
+	ErrFromWalletNotFound   = errors.New("from_user wallet not found for this currency")
+	ErrToWalletNotFound     = errors.New("to_user wallet not found for this currency")
+	ErrInsufficientBalance  = errors.New("insufficient balance")
+	ErrTransferFailed       = errors.New("transfer failed, please try again")
+)
+
 type TransactionService struct {
 	walletRepo         repositories.IWallet
 	transactionRepo    repositories.ITransaction
@@ -47,23 +62,23 @@ func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.
 
 func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount decimal.Decimal) error {
 	if fromID == toID {
-		return errors.New("cannot transfer to the same account")
+		return ErrSameAccountTransfer
 	}
 
 	// 驗證金額
 	if !utils.ValidatePositiveAmount(amount) {
-		return errors.New("amount must be positive")
+		return ErrAmountMustBePositive
 	}
 	if amount.GreaterThan(s.maxTransferAmount) {
-		return errors.New("amount exceeds maximum transfer limit")
+		return ErrAmountExceedsLimit
 	}
 
 	currency, err := s.currencyRepo.GetCurrencyByID(currencyID)
 	if err != nil {
-		return errors.New("currency not found")
+		return ErrCurrencyNotFound
 	}
 	if !amount.Equal(amount.Round(int32(currency.Decimals))) {
-		return errors.New("amount has more decimal places than this currency supports")
+		return ErrTooManyDecimalPlaces
 	}
 
 	tx := db_conn.Conn_DB.MasterDB.Begin()
@@ -105,9 +120,9 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 
 	walletNotFoundErr := func(userID uint) error {
 		if userID == fromID {
-			return errors.New("from_user wallet not found for this currency")
+			return ErrFromWalletNotFound
 		}
-		return errors.New("to_user wallet not found for this currency")
+		return ErrToWalletNotFound
 	}
 
 	lowWallet, err := s.walletRepo.GetWalletByUserIDAndCurrencyWithTx(lowID, currencyID, tx)
@@ -128,7 +143,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 
 	// 使用 decimal 比較
 	if fromWallet.Balance.LessThan(amount) {
-		return errors.New("insufficient balance")
+		return ErrInsufficientBalance
 	}
 
 	// 記錄變動前的餘額
@@ -143,11 +158,11 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	// returning - see docs/AUDIT.md S9.
 	if err := s.walletRepo.UpdateWallet(fromWallet, tx); err != nil {
 		log.Println("⚠️ failed to update from_wallet during transfer:", err)
-		return errors.New("transfer failed, please try again")
+		return ErrTransferFailed
 	}
 	if err := s.walletRepo.UpdateWallet(toWallet, tx); err != nil {
 		log.Println("⚠️ failed to update to_wallet during transfer:", err)
-		return errors.New("transfer failed, please try again")
+		return ErrTransferFailed
 	}
 
 	transaction := &models.Transaction{
@@ -161,7 +176,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 
 	if err := s.transactionRepo.CreateTransaction(transaction, tx); err != nil {
 		log.Println("⚠️ failed to create transaction record during transfer:", err)
-		return errors.New("transfer failed, please try again")
+		return ErrTransferFailed
 	}
 
 	// 記錄餘額變動歷史
@@ -176,7 +191,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	}
 	if err := s.balanceHistoryRepo.CreateHistory(fromHistory, tx); err != nil {
 		log.Println("⚠️ failed to record from_user balance history during transfer:", err)
-		return errors.New("transfer failed, please try again")
+		return ErrTransferFailed
 	}
 
 	toHistory := &models.BalanceHistory{
@@ -190,7 +205,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	}
 	if err := s.balanceHistoryRepo.CreateHistory(toHistory, tx); err != nil {
 		log.Println("⚠️ failed to record to_user balance history during transfer:", err)
-		return errors.New("transfer failed, please try again")
+		return ErrTransferFailed
 	}
 
 	if commitDB := tx.Commit(); commitDB.Error != nil {
@@ -198,7 +213,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 		// caller, since it can contain internal details (table/constraint
 		// names, driver-specific text). See docs/AUDIT.md S9.
 		log.Println("⚠️ failed to commit transfer transaction:", commitDB.Error)
-		return errors.New("transfer failed, please try again")
+		return ErrTransferFailed
 	}
 	committed = true
 

@@ -23,7 +23,7 @@ func NewHealthHandler() *HealthHandler {
 // @Router /health [get]
 func (h *HealthHandler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status": "healthy",
+		"status":  "healthy",
 		"service": "mini-crypto-wallet-api",
 	})
 }
@@ -57,7 +57,7 @@ func (h *HealthHandler) ReadinessCheck(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": "ready",
+		"status":  "ready",
 		"service": "mini-crypto-wallet-api",
 	})
 }

@@ -1,14 +1,19 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	apierrors "mini-crypto-wallet-api/internal/errors"
+
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 )
+
+var errRateLimitExceeded = errors.New("rate limit exceeded")
 
 // RateLimiter 速率限制器
 type RateLimiter struct {
@@ -53,11 +58,7 @@ func RateLimitMiddleware(rl *RateLimiter) gin.HandlerFunc {
 			c.Header("X-RateLimit-Limit", strconv.FormatFloat(float64(rl.rate), 'f', -1, 64))
 			c.Header("X-RateLimit-Remaining", "0")
 			c.Header("Retry-After", time.Now().Add(time.Second).Format(time.RFC1123))
-			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "rate limit exceeded",
-				"code":  "RATE_LIMIT_EXCEEDED",
-			})
-			c.Abort()
+			apierrors.RespondError(c, http.StatusTooManyRequests, apierrors.ErrCodeRateLimitExceeded, errRateLimitExceeded)
 			return
 		}
 

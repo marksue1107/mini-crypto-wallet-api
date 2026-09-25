@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	apierrors "mini-crypto-wallet-api/internal/errors"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/services"
 )
@@ -24,11 +25,12 @@ func NewCurrencyHandler(service *services.CurrencyService) *CurrencyHandler {
 // @Tags Currency
 // @Produce json
 // @Success 200 {array} models.CurrencyResponse
+// @Failure 500 {object} models.ErrorResponse
 // @Router /currencies [get]
 func (h *CurrencyHandler) GetCurrencies(c *gin.Context) {
 	currencies, err := h.service.GetAllCurrencies()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch currencies"})
+		apierrors.RespondError(c, http.StatusInternalServerError, apierrors.ErrCodeInternalError, errFailedToFetchCurrencies)
 		return
 	}
 
@@ -45,18 +47,19 @@ func (h *CurrencyHandler) GetCurrencies(c *gin.Context) {
 // @Produce json
 // @Param id path int true "Currency ID"
 // @Success 200 {object} models.CurrencyResponse
-// @Failure 404 {object} map[string]string
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
 // @Router /currencies/{id} [get]
 func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid currency id"})
+		apierrors.RespondError(c, http.StatusBadRequest, apierrors.ErrCodeInvalidRequest, errInvalidCurrencyID)
 		return
 	}
 
 	currency, err := h.service.GetCurrencyByID(uint(id))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "currency not found"})
+		apierrors.RespondError(c, http.StatusNotFound, apierrors.ErrCodeNotFound, errCurrencyNotFound)
 		return
 	}
 

@@ -48,8 +48,8 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	// Rate limiters. See docs/AUDIT.md S3: these middleware existed but
 	// were never wired into any route. Login gets a much stricter limit
 	// since it's the most common brute-force target.
-	generalLimiter := middleware.RateLimitMiddleware(middleware.NewRateLimiter(rate.Every(time.Minute/60), 60)) // 60 req/min
-	loginLimiter := middleware.RateLimitMiddleware(middleware.NewRateLimiter(rate.Every(time.Minute/10), 5))    // 10 req/min, small burst
+	generalLimiter := middleware.DefaultRateLimit()                                                          // 60 req/min
+	loginLimiter := middleware.RateLimitMiddleware(middleware.NewRateLimiter(rate.Every(time.Minute/10), 5)) // 10 req/min, small burst
 
 	// Init repository
 	userRepo := repositories.NewUserRepository()

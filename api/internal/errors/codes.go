@@ -3,11 +3,12 @@ package errors
 // 錯誤代碼定義
 const (
 	// 通用錯誤
-	ErrCodeInvalidRequest = "INVALID_REQUEST"
-	ErrCodeUnauthorized   = "UNAUTHORIZED"
-	ErrCodeForbidden      = "FORBIDDEN"
-	ErrCodeNotFound       = "NOT_FOUND"
-	ErrCodeInternalError  = "INTERNAL_ERROR"
+	ErrCodeInvalidRequest    = "INVALID_REQUEST"
+	ErrCodeUnauthorized      = "UNAUTHORIZED"
+	ErrCodeForbidden         = "FORBIDDEN"
+	ErrCodeNotFound          = "NOT_FOUND"
+	ErrCodeInternalError     = "INTERNAL_ERROR"
+	ErrCodeRateLimitExceeded = "RATE_LIMIT_EXCEEDED"
 
 	// 用戶相關錯誤
 	ErrCodeUserNotFound       = "USER_NOT_FOUND"

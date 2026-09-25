@@ -18,6 +18,13 @@ import (
 // See docs/AUDIT.md S7.
 var ErrUserAlreadyExists = errors.New("username or email already exists")
 
+// ErrInvalidCredentials is returned by Login for both "user not found" and
+// "wrong password" - deliberately the same error for both, so responses
+// don't leak whether a username exists (see docs/AUDIT.md's notes on
+// username enumeration). Handlers map this to HTTP 401 +
+// errors.ErrCodeInvalidCredentials. See docs/AUDIT.md S8.
+var ErrInvalidCredentials = errors.New("invalid username or password")
+
 type UserService struct {
 	userRepo     repositories.IUser
 	walletRepo   repositories.IWallet
@@ -123,12 +130,12 @@ func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, e
 func (s *UserService) Login(username, password string) (*models.User, error) {
 	user, err := s.userRepo.GetUserByUsername(username)
 	if err != nil {
-		return nil, errors.New("invalid username or password")
+		return nil, ErrInvalidCredentials
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return nil, errors.New("invalid username or password")
+		return nil, ErrInvalidCredentials
 	}
 
 	return user, nil

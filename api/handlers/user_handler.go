@@ -3,7 +3,8 @@ package handlers
 import (
 	"errors"
 	"mini-crypto-wallet-api/internal/auth"
-	internalerrors "mini-crypto-wallet-api/internal/errors"
+	apierrors "mini-crypto-wallet-api/internal/errors"
+	"mini-crypto-wallet-api/middleware"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/services"
 	"time"
@@ -34,14 +35,15 @@ func NewUserHandler(service *services.UserService, jwtManager *auth.JWTManager) 
 // @Produce json
 // @Param user body models.UserCreateRequest true "User info"
 // @Success 200 {object} models.UserResponse
-// @Failure 400 {object} map[string]string
-// @Failure 409 {object} map[string]string
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 409 {object} models.ErrorResponse
+// @Failure 429 {object} models.ErrorResponse
 // @Router /users [post]
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	// Bind to DTO instead of database model
 	var req models.UserCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.HandleValidationError(c, err)
 		return
 	}
 
@@ -49,13 +51,10 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	user, err := h.service.CreateUser(&req)
 	if err != nil {
 		if errors.Is(err, services.ErrUserAlreadyExists) {
-			c.JSON(http.StatusConflict, gin.H{
-				"error": err.Error(),
-				"code":  internalerrors.ErrCodeUserAlreadyExists,
-			})
+			apierrors.RespondError(c, http.StatusConflict, apierrors.ErrCodeUserAlreadyExists, err)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
+		apierrors.RespondError(c, http.StatusInternalServerError, apierrors.ErrCodeInternalError, errFailedToCreateUser)
 		return
 	}
 
@@ -73,24 +72,26 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 // @Produce json
 // @Param login body models.LoginRequest true "Login credentials"
 // @Success 200 {object} models.LoginResponse
-// @Failure 401 {object} map[string]string
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 429 {object} models.ErrorResponse
 // @Router /auth/login [post]
 func (h *UserHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.HandleValidationError(c, err)
 		return
 	}
 
 	user, err := h.service.Login(req.Username, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		apierrors.RespondError(c, http.StatusUnauthorized, apierrors.ErrCodeInvalidCredentials, err)
 		return
 	}
 
 	token, err := h.jwtManager.GenerateToken(user.ID, user.Username)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		apierrors.RespondError(c, http.StatusInternalServerError, apierrors.ErrCodeInternalError, errFailedToGenerateToken)
 		return
 	}
 

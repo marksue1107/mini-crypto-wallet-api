@@ -2,6 +2,7 @@ package handlers
 
 import (
 	_ "mini-crypto-wallet-api/docs"
+	apierrors "mini-crypto-wallet-api/internal/errors"
 	"mini-crypto-wallet-api/middleware"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/services"
@@ -28,12 +29,15 @@ func NewWalletHandler(service *services.WalletService) *WalletHandler {
 // @Produce json
 // @Param user_id path int true "User ID"
 // @Success 200 {object} models.WalletResponse
-// @Failure 404 {object} map[string]string
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 403 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
 // @Router /wallet/{user_id} [get]
 func (h *WalletHandler) GetWallet(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+		apierrors.RespondError(c, http.StatusBadRequest, apierrors.ErrCodeInvalidRequest, errInvalidUserID)
 		return
 	}
 
@@ -44,7 +48,7 @@ func (h *WalletHandler) GetWallet(c *gin.Context) {
 
 	wallet, err := h.service.GetWallet(uint(userID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		apierrors.RespondError(c, http.StatusNotFound, apierrors.ErrCodeWalletNotFound, errWalletNotFound)
 		return
 	}
 

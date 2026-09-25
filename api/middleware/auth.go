@@ -1,35 +1,41 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"mini-crypto-wallet-api/internal/auth"
+	apierrors "mini-crypto-wallet-api/internal/errors"
 
 	"github.com/gin-gonic/gin"
+)
+
+var (
+	errAuthHeaderRequired = errors.New("authorization header required")
+	errAuthHeaderFormat   = errors.New("invalid authorization header format")
+	errUnauthorized       = errors.New("unauthorized")
+	errForbidden          = errors.New("forbidden: cannot access other user's resources")
 )
 
 func AuthMiddleware(jwtManager *auth.JWTManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header required"})
-			c.Abort()
+			apierrors.RespondError(c, http.StatusUnauthorized, apierrors.ErrCodeUnauthorized, errAuthHeaderRequired)
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
-			c.Abort()
+			apierrors.RespondError(c, http.StatusUnauthorized, apierrors.ErrCodeUnauthorized, errAuthHeaderFormat)
 			return
 		}
 
 		token := parts[1]
 		claims, err := jwtManager.ValidateToken(token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			c.Abort()
+			apierrors.RespondError(c, http.StatusUnauthorized, apierrors.ErrCodeUnauthorized, err)
 			return
 		}
 
@@ -44,15 +50,13 @@ func AuthMiddleware(jwtManager *auth.JWTManager) gin.HandlerFunc {
 func RequireUserID(c *gin.Context, targetUserID uint) bool {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		c.Abort()
+		apierrors.RespondError(c, http.StatusUnauthorized, apierrors.ErrCodeUnauthorized, errUnauthorized)
 		return false
 	}
 
 	uid, ok := userID.(uint)
 	if !ok || uid != targetUserID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: cannot access other user's resources"})
-		c.Abort()
+		apierrors.RespondError(c, http.StatusForbidden, apierrors.ErrCodeForbidden, errForbidden)
 		return false
 	}
 
