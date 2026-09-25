@@ -40,7 +40,24 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	}
 
 	tx := db_conn.Conn_DB.MasterDB.Begin()
-	defer utils.RollbackIfPanic(tx)
+	// committed tracks whether we reached tx.Commit() successfully. Every
+	// return path below - including ordinary `return err` on validation
+	// failures like insufficient balance, not just panics - must release
+	// this transaction's connection back to the pool. utils.RollbackIfPanic
+	// alone doesn't do that: it only rolls back on an actual Go panic, so a
+	// plain early return left the connection open and idle-in-transaction
+	// forever (docs/AUDIT_REMEDIATION_PLAN.md finding N2).
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+		tx.Rollback()
+	}()
 
 	// 使用幣種查詢錢包
 	fromWallet, err := s.walletRepo.GetWalletByUserIDAndCurrency(fromID, currencyID)
@@ -127,6 +144,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	if commitDB := tx.Commit(); commitDB.Error != nil {
 		return commitDB.Error
 	}
+	committed = true
 
 	// Send Kafka message
 	if s.kafkaProducer != nil {

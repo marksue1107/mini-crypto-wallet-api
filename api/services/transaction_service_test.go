@@ -137,6 +137,37 @@ func TestTransfer_Success_TransactionHashGenerated(t *testing.T) {
 	assert.Equal(t, txs[0].ID, foundTx.ID)
 }
 
+// TestTransfer_Fail_DoesNotLeakConnection is a regression test for
+// docs/AUDIT_REMEDIATION_PLAN.md finding N2: every early `return err` inside
+// Transfer() between tx.Begin() and tx.Commit() used to skip tx.Rollback(),
+// leaving the connection checked out of the pool ("idle in transaction")
+// forever. Insufficient balance is the most common, entirely non-malicious
+// way to hit that code path, so repeating it must not leak connections.
+func TestTransfer_Fail_DoesNotLeakConnection(t *testing.T) {
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
+
+	currency := test.CreateTestCurrency(db, "USDT")
+	alice := test.CreateTestUser(db, "alice")
+	bob := test.CreateTestUser(db, "bob")
+	test.CreateTestWallet(db, alice.ID, currency.ID, 100)
+	test.CreateTestWallet(db, bob.ID, currency.ID, 0)
+
+	walletRepo := repositories.NewWalletRepository()
+	txRepo := repositories.NewTransactionRepository()
+	service := NewTransactionService(walletRepo, txRepo, nil)
+
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+
+	for i := 0; i < 5; i++ {
+		err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200)) // always exceeds the 100 balance
+		require.Error(t, err)
+		require.Equal(t, 0, sqlDB.Stats().InUse,
+			"Transfer() left a connection checked out of the pool after a failed transfer (leaked, un-rolled-back transaction)")
+	}
+}
+
 // TestTransfer_Fail_InsufficientBalance verifies transfer fails when balance is insufficient
 func TestTransfer_Fail_InsufficientBalance(t *testing.T) {
 	// Setup
