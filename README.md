@@ -28,9 +28,10 @@ It simulates user creation, wallet management, fund transfer, and transaction hi
 
 ### Concurrency Safety
 - **Problem**: Race conditions in concurrent wallet transfers can cause balance inconsistencies
-- **Solution**: PostgreSQL row-level pessimistic locking with `SELECT ... FOR UPDATE`
-- **Implementation**: `GetWalletByUserIDWithTx` in `wallet_repository.go:38` uses GORM `clause.Locking`
-- **Impact**: Zero race conditions under concurrent load, demonstrated in `concurrency_demo_test.go`
+- **Solution**: PostgreSQL row-level pessimistic locking with `SELECT ... FOR UPDATE`, always acquired in ascending `user_id` order (regardless of transfer direction) to avoid deadlocks between opposite-direction concurrent transfers
+- **Implementation**: `GetWalletByUserIDAndCurrencyWithTx` in `repositories/wallet_repository.go` uses GORM `clause.Locking`
+- **Impact**: No lost updates and no deadlocks under concurrent load, demonstrated in `internal/test/concurrency_demo_test.go` and `internal/test/deadlock_test.go`
+- **⚠️ SQLite limitation**: this locking is a Postgres-only guarantee. GORM's SQLite driver silently drops `FOR UPDATE` (SQLite has no row-level locking), so `db_driver: sqlite` does **not** provide real concurrency safety for transfers - it's a convenience for single-developer local testing only. Anything beyond that must use `db_driver: postgres`. The service logs a warning on startup when running in SQLite mode.
 
 ### Financial Precision
 - **Problem**: Float arithmetic loses precision in financial calculations (e.g., 0.1 + 0.2 ≠ 0.3)
