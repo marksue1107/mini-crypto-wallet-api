@@ -232,3 +232,26 @@ docs/swagger.yaml` 完全沒有紀錄），只是本地磁碟上長期存在、�
 檔案必須 commit，不可再被 `.gitignore` 擋掉」，並考慮在 CI 中加一道檢查：重新執行
 `swag init` 後 `git diff --exit-code api/docs` 若有差異就讓 CI 失敗，避免文件再度與
 程式碼註解不同步。
+
+### N2（第 2 批開工前發現，嚴重度 **Critical**，依規則已停下回報，等待指示）
+`services/transaction_service.go` 的 `Transfer()`：`tx := db_conn.Conn_DB.MasterDB.Begin()`
+（第 42 行）之後，一路到 `tx.Commit()`（第 127 行）之間，所有中途 `return errors.New(...)`
+的地方（第 48、52、58、62、70、81、84、97、111、124 行——包含「餘額不足」、「找不到
+錢包」、「幣別不符」、寫入失敗等 10 條路徑）**都沒有呼叫 `tx.Rollback()`**。第 43 行的
+`defer utils.RollbackIfPanic(tx)` 只有在真的發生 Go panic 時才會 rollback（內部用
+`recover()` 判斷），對一般的 `return err` 完全不會觸發。也就是說，這顆連線上開啟的
+DB transaction 在這些路徑上既不會 commit、也不會 rollback，會直接被閒置在
+「idle in transaction」狀態，且底層連線永遠不會被還給 connection pool。
+
+實際影響：「餘額不足」是最常見、完全合法的業務錯誤（不需要任何惡意輸入，一般使用者
+正常操作就會觸發），每發生一次就洩漏一條 Postgres 連線；只要有穩定流量，connection
+pool（乃至 Postgres 本身的 `max_connections`）遲早會被耗盡，屆時所有新請求都拿不到
+資料庫連線，整個服務會直接停擺——是一個資金正確性稽核之外、影響**服務可用性**的
+嚴重錯誤，而且完全不需要攻擊者，正常使用就會出現。`docs/AUDIT.md` 稽核當下沒有記錄
+這一點（原稽核著重在鎖定順序與 SQLite 假鎖，沒有注意到這個 rollback 缺漏）。
+
+**處理建議**：這個函式在第 2 批（M1 依 user_id 排序鎖定、M4 改成幣別感知的加鎖查詢）
+本來就要整個重寫，建議直接在同一次改動裡把每個提前 return 的路徑都補上
+`tx.Rollback()`（或改用「defer 一個會檢查是否已 commit 的 rollback-safe 收尾函式」的
+寫法，例如 `defer func() { if !committed { tx.Rollback() } }()`），一次修好，避免同一
+段程式碼被改兩次。**已停下回報，等待使用者確認是否併入第 2 批修正**，不自行擴大範圍。
