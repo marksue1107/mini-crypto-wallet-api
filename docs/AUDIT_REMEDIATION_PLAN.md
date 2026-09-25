@@ -110,12 +110,12 @@
 ## 第 2 批：資金正確性
 對應：M1、M4、M6、M2（採方案 c）
 
-- [ ] M1：轉帳時依 `user_id` 由小到大鎖定兩顆錢包，與呼叫參數順序無關
-- [ ] M1 測試：A→B 與 B→A 大量同時轉帳，不發生 deadlock，且兩人餘額總和守恆（Postgres / testcontainers）
-- [ ] M4：新增依 `user_id` + `currency_id` 查詢並加鎖的 repository 方法，`Transfer()` 改用它
-- [ ] M6：依幣別 `Decimals` 驗證金額小數位數，超過即回傳驗證錯誤；新增單筆上限金額設定（放 config，預設值寫在 `config.yaml.example` 或程式常數）
-- [ ] M6 測試：小數位數超過、零、負數、超過上限，各至少一條
-- [ ] M2：SQLite 模式啟動時印出明確警告（不保證併發正確性、僅供單機開發）；README 補充說明
+- [x] M1：轉帳時依 `user_id` 由小到大鎖定兩顆錢包，與呼叫參數順序無關
+- [x] M1 測試：A→B 與 B→A 大量同時轉帳，不發生 deadlock，且兩人餘額總和守恆（Postgres / testcontainers）
+- [x] M4：新增依 `user_id` + `currency_id` 查詢並加鎖的 repository 方法，`Transfer()` 改用它
+- [x] M6：依幣別 `Decimals` 驗證金額小數位數，超過即回傳驗證錯誤；新增單筆上限金額設定（放 config，預設值寫在 `config.yaml.example` 或程式常數）
+- [x] M6 測試：小數位數超過、零、負數、超過上限，各至少一條
+- [x] M2：SQLite 模式啟動時印出明確警告（不保證併發正確性、僅供單機開發）；README 補充說明
 
 **驗收條件**
 - `cd api && go test ./... -race` 全部通過
@@ -123,7 +123,46 @@
 - 用 SQLite 啟動服務時，log 中可看到警告訊息
 
 **驗證紀錄**
-（待填寫）
+- **開工前先處理 N2/N3**（見上方，兩個都已獨立 commit 修好），才開始本批。
+- **M1**：`Transfer()` 改成 `lowID, highID := fromID, toID`（`highID < lowID` 時互換），一律先鎖 `lowID`、再鎖 `highID`，事後再依 `fromID == lowID` 映射回 `fromWallet`/`toWallet`。**用臨時停用排序邏輯的方式實測驗證**：把排序那 3 行暫時改回「不排序」（`lowID, highID := fromID, toID` 不做互換），跑新測試 `TestTransfer_NoDeadlock_BidirectionalConcurrentTransfers`，在真的 Postgres（testcontainers）上重現出貨真價實的
+  `ERROR: deadlock detected (SQLSTATE 40P01)`（log 裡出現 6 次），測試也如預期失敗；還原排序邏輯後，同一個測試穩定通過（500 個 SQL 常式很快跑完，不再有 deadlock）。SQLite 因為本來就不支援真正的 row-level lock（M2），沒有能力重現這種「兩個交易各自握有一個鎖互相等待」的結構性死結，所以這個測試必須用 testcontainers 起真的 Postgres 才有意義。
+- **M4**：`IWallet` 介面把 `GetWalletByUserIDWithTx(userID, tx...)` 換成
+  `GetWalletByUserIDAndCurrencyWithTx(userID, currencyID, tx...)`，查詢條件直接帶
+  `user_id = ? AND currency_id = ?` 一起鎖定，不再是「先用 user_id 撈任一筆再事後比對
+  CurrencyID」。順手把 `Transfer()` 一開始那兩個不需要鎖、單純預檢查用的
+  `GetWalletByUserIDAndCurrency` 查詢拿掉（改成直接靠加鎖查詢本身判斷錢包是否存在/
+  幣別是否相符），少了兩次多餘的資料庫往返。
+- **M6**：`TransactionService` 新增 `currencyRepo` 欄位與 `maxTransferAmount`
+  （`decimal.Decimal`）欄位；`NewTransactionService` 簽名新增 `currencyRepo
+  repositories.ICurrency` 參數（已同步修改 `router/router.go` 與所有測試呼叫點，共
+  14 處）。驗證邏輯：`amount.GreaterThan(maxTransferAmount)` 判斷是否超過上限
+  （預設常數 `DefaultMaxTransferAmount = "1000000"`，可由 `config.yaml` 新增的
+  `max_transfer_amount` 字串欄位覆寫，留空或解析失敗則用預設值）；
+  `!amount.Equal(amount.Round(int32(currency.Decimals)))` 判斷小數位數是否超過該幣別
+  允許的位數。新增 `TestTransfer_Fail_TooManyDecimalPlaces`（9 位小數 vs. USDT 測試幣別
+  的 8 位）與 `TestTransfer_Fail_ExceedsMaxAmount`（超過預設 1,000,000 上限）；零元、
+  負數已有既有測試涵蓋（`TestTransfer_Fail_ZeroAmount`、`TestTransfer_Fail_NegativeAmount`）。
+- **M2**：`db_conn/sqlite.go` 在連線成功後印出明確的中文警告（SQLite 模式沒有真正的
+  列鎖，`FOR UPDATE` 是 no-op，不保證併發轉帳正確性，僅供單機開發使用）；README 的
+  「Concurrency Safety」小節同步補充這個限制的說明，並修正一處已經過時、指向舊方法名
+  `GetWalletByUserIDWithTx` 的行號引用（commit `285d76b`）。
+  - **意外發現並一併修正**：實作 M4 拿掉那兩次多餘查詢後，原本穩定通過的
+    `TestTransfer_ConcurrentTransfers_NoRaceCondition`（SQLite、Batch 1 就有的測試）
+    開始有約 4/5 的機率因為 `database is locked (5) (SQLITE_BUSY)` 失敗——因為
+    SQLite 從來沒有設定過 `PRAGMA busy_timeout`，只要兩個連線的寫入階段時間點稍微
+    靠近就會立刻報錯，而不是像正常情況下等一下讓另一個先寫完。這其實是本來就存在、
+    只是靠著多餘查詢造成的時間差意外沒被踩到的潛在問題，屬於 M2「SQLite 併發安全」
+    範疇內，於是一併在 `db_conn/sqlite.go` 與 `internal/test/test_helpers.go` 都加上
+    `PRAGMA busy_timeout = 5000`（5 秒）解決，之後連續多次重跑該測試都穩定通過。
+    這不是新的 Critical 發現（沒有造成資料錯誤，只是把「應該等待」的情境誤判成
+    「直接失敗」），所以沒有另外停下回報，直接在本批修正紀錄中說明。
+- **實際執行結果**：`go build ./...`、`go vet ./...` 皆乾淨；`go test ./... -race
+  -count=3` 連續三次全部 `ok`，包含兩個 testcontainers 測試
+  （`TestConcurrentTransfers`、`TestTransfer_NoDeadlock_BidirectionalConcurrentTransfers`）
+  皆為 `--- PASS`（非 skip）。
+- Commits（本批）：
+  - `828c317` fix(M1,M4,M6,M2): fixed lock order, currency-aware locking, amount limits
+  - `285d76b` docs(M2): document SQLite's lack of real concurrency safety in README
 
 ---
 
