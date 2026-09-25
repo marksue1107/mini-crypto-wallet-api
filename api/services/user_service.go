@@ -5,7 +5,6 @@ import (
 	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
-	"mini-crypto-wallet-api/utils"
 
 	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
@@ -43,10 +42,28 @@ func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, e
 
 	// 使用事務確保用戶和錢包創建的原子性
 	tx := db_conn.Conn_DB.MasterDB.Begin()
-	defer utils.RollbackIfPanic(tx)
-
-	if err := s.userRepo.CreateUser(user); err != nil {
+	// committed tracks whether we reached tx.Commit(). Every return path
+	// below must roll back if we didn't get there, or the connection leaks
+	// in an idle-in-transaction state (same bug class as, and fixed the
+	// same way as, docs/AUDIT_REMEDIATION_PLAN.md finding N2).
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
 		tx.Rollback()
+	}()
+
+	// CreateUser must run inside tx: previously it used the repository's
+	// non-transactional connection and was committed (autocommit) the
+	// instant it ran, so if wallet creation failed afterwards the rollback
+	// below could never undo it - leaving an orphaned user with no wallet
+	// (docs/AUDIT_REMEDIATION_PLAN.md finding N3).
+	if err := s.userRepo.CreateUser(user, tx); err != nil {
 		return nil, err
 	}
 
@@ -68,13 +85,13 @@ func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, e
 	}
 
 	if err := s.walletRepo.CreateWallet(wallet, tx); err != nil {
-		tx.Rollback()
 		return nil, err
 	}
 
 	if commitDB := tx.Commit(); commitDB.Error != nil {
 		return nil, commitDB.Error
 	}
+	committed = true
 
 	return user, nil
 }

@@ -1,9 +1,13 @@
 package repositories
 
-import "mini-crypto-wallet-api/models"
+import (
+	"mini-crypto-wallet-api/models"
+
+	"gorm.io/gorm"
+)
 
 type IUser interface {
-	CreateUser(user *models.User) error
+	CreateUser(user *models.User, tx ...*gorm.DB) error
 	GetUserByUsername(username string) (*models.User, error)
 	GetUserByID(userID uint) (*models.User, error)
 }

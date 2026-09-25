@@ -4,6 +4,8 @@ import (
 	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories/entity"
+
+	"gorm.io/gorm"
 )
 
 type userRepository struct {
@@ -17,8 +19,13 @@ func NewUserRepository() IUser {
 	return r
 }
 
-func (r *userRepository) CreateUser(user *models.User) error {
-	return r.DBClient.MasterDB.Create(user).Error
+func (r *userRepository) CreateUser(user *models.User, tx ...*gorm.DB) error {
+	var db *gorm.DB = r.DBClient.MasterDB
+	if len(tx) > 0 {
+		db = tx[0]
+	}
+
+	return db.Create(user).Error
 }
 
 func (r *userRepository) GetUserByUsername(username string) (*models.User, error) {
