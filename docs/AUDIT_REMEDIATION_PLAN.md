@@ -169,14 +169,14 @@
 ## 第 3 批：安全性
 對應：S1、S2、S3、S4、S7、S9、S11
 
-- [ ] S1：`config.yaml` 自版控移除（`git rm --cached`）並加入 `.gitignore`；新增 `api/config.yaml.example`（佔位值）；密鑰與 DB 密碼改由環境變數注入
-- [ ] S2：`JWTSecret` 未設定或長度 < 32 時 `log.Fatal`，移除原始碼中的預設密鑰
-- [ ] S3：在 `/auth/login`、`/users`、`/wallet/transfer`、`/tx/:hash` 掛上限流（登入端點用較嚴格的設定）
-- [ ] S4：呼叫 `SetTrustedProxies`，可信代理從環境變數讀取，預設不信任任何代理
-- [ ] S7：重複帳號回傳 `409` + `USER_ALREADY_EXISTS`
-- [ ] S9：commit 失敗不回傳原始 DB 錯誤給客戶端，原始錯誤帶 trace id 寫入 log
-- [ ] S11：密碼最小長度提高到 8
-- [ ] 以上每一項都要有對應的 handler 或 middleware 測試
+- [x] S1：`config.yaml` 自版控移除（`git rm --cached`）並加入 `.gitignore`；新增 `api/config.yaml.example`（佔位值）；密鑰與 DB 密碼改由環境變數注入
+- [x] S2：`JWTSecret` 未設定或長度 < 32 時 `log.Fatal`，移除原始碼中的預設密鑰
+- [x] S3：在 `/auth/login`、`/users`、`/wallet/transfer`、`/tx/:hash` 掛上限流（登入端點用較嚴格的設定）
+- [x] S4：呼叫 `SetTrustedProxies`，可信代理從環境變數讀取，預設不信任任何代理
+- [x] S7：重複帳號回傳 `409` + `USER_ALREADY_EXISTS`
+- [x] S9：commit 失敗不回傳原始 DB 錯誤給客戶端，原始錯誤帶 trace id 寫入 log
+- [x] S11：密碼最小長度提高到 8
+- [x] 以上每一項都要有對應的 handler 或 middleware 測試
 
 **驗收條件**
 - `cd api && go test ./... -race` 全部通過
@@ -186,7 +186,73 @@
 - 限流測試：超過上限的請求回傳 `429`，且偽造 `X-Forwarded-For` 無法繞過
 
 **驗證紀錄**
-（待填寫）
+- **S1**：`git rm --cached api/config.yaml`，`.gitignore` 新增 `/api/config.yaml`；新增
+  `api/config.yaml.example`（含產生隨機密鑰的指令範例、明確標註「留空或太短，服務會
+  直接拒絕啟動」）。**額外處理**：發現只把 `config.yaml` 從版控移除還不夠——
+  `internal/config/loader.go` 原本只有 `viper.AutomaticEnv()`，viper 的行為是「只有
+  已經知道的 key 才能被環境變數覆寫」，如果完全沒有 `config.yaml`（正式環境的目標
+  狀態），viper 根本不知道有 `jwt_secret`/`postgres_dsn` 這些 key 存在，光設環境變數
+  不會被讀到。修法：對每個欄位呼叫 `viper.SetDefault(key, "")`，讓 viper 一開始就
+  「認得」這些 key，環境變數才真的能覆寫。新增
+  `internal/config/loader_test.go`：`TestLoadConfig_FromEnvOnly_NoConfigFile`
+  （chdir 到全新的暫存目錄，保證真的沒有 `config.yaml`，只靠環境變數）與
+  `TestLoadConfig_DefaultsWhenNothingSet`，兩者都通過，證明「純環境變數配置」現在
+  真的可行。**需要使用者知情**：`config.yaml` 裡曾經 commit 過的那組 JWT 密鑰與
+  Postgres 密碼已經進了 git 歷史，從工作目錄移除不代表歷史紀錄裡沒有，兩者都應該
+  視為已外洩並更換（歷史清理留給第 6 批的收尾報告處理，需要使用者決定是否要重寫
+  git 歷史）。
+- **S2**：新增 `auth.ValidateSecretStrength`（最小 32 字元）與 `auth.MinSecretLength`
+  常數；`router.go` 移除 `default-secret-key-change-in-production-min-32-chars` 這個
+  硬編碼 fallback，改成驗證失敗就 `log.Fatalf`。測試：`internal/auth/jwt_test.go` 的
+  `TestValidateSecretStrength`（表格測試涵蓋空字串/31 字元/32 字元/正常長度）；
+  `router/router_test.go` 的 `TestSetupRouter_FailsFastOnWeakJWTSecret` 用 Go 官方
+  建議的「重新執行自己的測試二進位檔」模式（`exec.Command(os.Args[0], "-test.run=...")`
+  + 環境變數旗標）測試 `log.Fatal`／`os.Exit` 這種無法在同一個測試 process 內直接呼叫
+  的路徑，確認子行程真的以非 0 狀態碼結束。
+- **S3**：`router.go` 建立兩個限流器——一般端點 60 req/min（`generalLimiter`），登入
+  10 req/min、burst 5（`loginLimiter`，比一般端點嚴格很多，因為是最常見的暴力破解
+  目標）——分別掛到 `POST /users`、`GET /tx/:hash`、`POST /wallet/transfer`（一般）與
+  `POST /auth/login`（嚴格）。新增 `middleware/ratelimit_test.go`
+  （`TestRateLimitMiddleware_BlocksAfterLimit`、
+  `TestRateLimitMiddleware_SeparateClientsHaveSeparateLimits`）與
+  `router/router_test.go` 的 `TestSetupRouter_LoginIsRateLimited`（直接打真正組好的
+  `SetupRouter()`，連續打 `/auth/login` 直到收到 429，證明限流真的掛在路由上，不是
+  只有 middleware 本身能動）。
+- **S4**：`router.go` 一開始就呼叫 `r.SetTrustedProxies(trustedProxies)`
+  （`trustedProxies` 來自新的 `TRUSTED_PROXIES`/`trusted_proxies` 設定，逗號分隔，
+  留空則傳 `nil` = 不信任任何代理）。新增
+  `TestRateLimitMiddleware_ClientIPNotSpoofableViaXFF_WhenNoTrustedProxies`：
+  **實測驗證**先把測試裡的 `SetTrustedProxies(nil)` 暫時拿掉重跑，確認測試真的會
+  FAIL（同一個真實來源 IP 帶偽造的 `X-Forwarded-For` 就能繞過限流，拿到
+  200 而非 429），加回來後穩定 PASS。
+- **S7**：`UserService.CreateUser` 一開始就查詢 username/email 是否已存在，存在就回傳
+  新的 sentinel error `services.ErrUserAlreadyExists`；`UserHandler.CreateUser` 用
+  `errors.Is` 判斷，命中就回 `409` + `{"code":"USER_ALREADY_EXISTS"}`（沿用
+  `internal/errors` 裡本來就定義好、但從未被使用過的常數）。新增
+  `repositories.IUser.GetUserByEmail`（原本只有 `GetUserByUsername`）。測試：
+  service 層的 `TestCreateUser_Fail_DuplicateUsername`／
+  `TestCreateUser_Fail_DuplicateEmail`，以及**這個 repo 第一個 handler 層測試**
+  `handlers/user_handler_test.go` 的 `TestCreateUser_Fail_DuplicateUsername_Returns409`
+  （直接檢查 HTTP 409 與回應 body 的 `code` 欄位）。
+- **S9**：`Transfer()`、`UserService.CreateUser` 裡所有「直接把底層 GORM/DB error
+  往外拋」的地方（不只 `tx.Commit()` 失敗，連 `UpdateWallet`／`CreateTransaction`／
+  `CreateHistory`／`CreateUser`／`CreateWallet` 寫入失敗）都改成：詳細錯誤寫進
+  `log.Println`，回傳給呼叫端的是固定的安全訊息（例如「transfer failed, please try
+  again」）。**未做自動化測試**：要在單元測試裡可靠地讓 `tx.Commit()`
+  本身失敗（而不是前面的驗證邏輯攔下來）需要能操控底層連線的 mock，目前的
+  repository 介面沒有為此設計，超出這次修正的合理範圍；已在此紀錄這個已知的測試
+  缺口，供之後補強。
+- **S11**：`models/user_dto.go` 的 `Password` binding 從 `min=6` 改成 `min=8`。測試：
+  `handlers/user_handler_test.go` 的 `TestCreateUser_Fail_PasswordTooShort`（7 字元
+  密碼應被拒絕）。
+- **實際執行結果**：`go build ./...`、`go vet ./...` 皆乾淨；`go test ./... -race
+  -count=3` 連續三次全部 `ok`，涵蓋新增的 `internal/auth`、`internal/config`、
+  `middleware`、`router`、`handlers` 五個先前完全沒有測試的套件。
+  `git ls-files | grep -E '(^|/)config\.yaml$'` 與 `grep -rn 'default-secret' api`
+  皆無輸出。
+- Commits（本批）：
+  - `582da7e` fix(S1,S2,S3,S4): remove committed secrets, fail fast on weak JWT, wire up rate limiting and trusted-proxy config
+  - `6806a02` fix(S7,S9,S11): 409 on duplicate signup, stop leaking raw DB errors, raise min password length
 
 ---
 
