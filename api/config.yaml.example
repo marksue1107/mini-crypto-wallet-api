@@ -1,0 +1,35 @@
+# config.yaml.example
+#
+# Copy this file to config.yaml for local development:
+#   cp config.yaml.example config.yaml
+# then fill in real values. config.yaml is gitignored and must never be
+# committed - see docs/AUDIT.md S1 (a real secret used to be committed here).
+#
+# In any shared/deployed environment, don't use config.yaml at all: set these
+# as environment variables instead (JWT_SECRET, POSTGRES_DSN, DB_DRIVER,
+# APP_ENV, KAFKA_BROKER, REDIS_ADDR, MAX_TRANSFER_AMOUNT). Environment
+# variables always take precedence over config.yaml.
+
+app_env: development
+db_driver: postgres
+
+# PostgreSQL 連線字串
+postgres_dsn: host=localhost user=postgres password=CHANGE_ME dbname=mini_wallet port=5432 sslmode=disable
+
+# Kafka broker 位置（用於發送或接收訊息）
+kafka_broker: localhost:9092
+
+# JWT 密鑰 - 必須是隨機產生、至少 32 字元的字串。留空或太短，服務會直接拒絕啟動。
+# 產生範例：openssl rand -base64 32
+jwt_secret: CHANGE_ME_min_32_chars_random_secret
+
+# Redis 地址（用於分散式鎖和速率限制）
+redis_addr: localhost:6379
+
+# 單筆轉帳金額上限（字串，避免 YAML 數字解析誤差；留空則用程式內建預設值）
+max_transfer_amount: "1000000"
+
+# 信任的反向代理 IP/CIDR（逗號分隔），用來解析 X-Forwarded-For 判斷真實客戶端 IP。
+# 留空 = 不信任任何代理，直接用連線來源 IP（限流才不會被偽造的 X-Forwarded-For 繞過）。
+# 只有在服務前面真的有你自己控制的反向代理/負載平衡器時才填。
+trusted_proxies: ""

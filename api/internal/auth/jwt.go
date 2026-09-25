@@ -10,7 +10,25 @@ import (
 var (
 	ErrInvalidToken = errors.New("invalid token")
 	ErrExpiredToken = errors.New("token expired")
+
+	ErrSecretTooShort = errors.New("jwt secret must be at least 32 characters")
 )
+
+// MinSecretLength is the minimum acceptable length for a JWT signing
+// secret. 32 bytes matches the minimum recommended key size for HS256.
+const MinSecretLength = 32
+
+// ValidateSecretStrength rejects empty or too-short secrets. Call this
+// before starting the server: previously, an empty/missing JWT_SECRET
+// silently fell back to a default value hardcoded in this repo's source
+// code, meaning anyone who read the source could forge tokens for any user
+// against a misconfigured deployment. See docs/AUDIT.md S2.
+func ValidateSecretStrength(secret string) error {
+	if len(secret) < MinSecretLength {
+		return ErrSecretTooShort
+	}
+	return nil
+}
 
 type JWTClaims struct {
 	UserID   uint   `json:"user_id"`

@@ -26,6 +26,7 @@ internal/test/*.db-journal
 # 🔐 Environment / secrets
 .env
 .env.*
+/api/config.yaml
 
 # 📝 Temp / Logs
 *.log

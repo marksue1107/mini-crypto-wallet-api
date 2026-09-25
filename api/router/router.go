@@ -1,6 +1,7 @@
 package router
 
 import (
+	"log"
 	"mini-crypto-wallet-api/handlers"
 	"mini-crypto-wallet-api/internal/auth"
 	"mini-crypto-wallet-api/internal/config"
@@ -8,23 +9,47 @@ import (
 	"mini-crypto-wallet-api/middleware"
 	"mini-crypto-wallet-api/repositories"
 	"mini-crypto-wallet-api/services"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 )
 
 func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	r := gin.Default()
 
+	// Trust no proxy by default: without this, Gin trusts every proxy for
+	// X-Forwarded-For/X-Real-IP parsing, so ClientIP() (and therefore the
+	// rate limiter below, which keys on it) can be spoofed by any client
+	// simply sending its own X-Forwarded-For header, unless this service
+	// sits behind a reverse proxy that overwrites that header. Only trust
+	// specific proxies you control by setting TRUSTED_PROXIES. See
+	// docs/AUDIT.md S4.
+	var trustedProxies []string
+	if config.Config.TrustedProxies != "" {
+		trustedProxies = strings.Split(config.Config.TrustedProxies, ",")
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		log.Fatalf("❌ invalid TRUSTED_PROXIES: %v", err)
+	}
+
 	// 添加追蹤中間件
 	r.Use(middleware.TraceMiddleware())
 
-	// Init JWT Manager
+	// Init JWT Manager. Fail fast rather than silently signing tokens with
+	// a secret hardcoded in this repo's source - see docs/AUDIT.md S2.
 	jwtSecret := config.Config.JWTSecret
-	if jwtSecret == "" {
-		jwtSecret = "default-secret-key-change-in-production-min-32-chars"
+	if err := auth.ValidateSecretStrength(jwtSecret); err != nil {
+		log.Fatalf("❌ invalid JWT secret: %v (set the JWT_SECRET environment variable to a random string of at least %d characters)", err, auth.MinSecretLength)
 	}
 	jwtManager := auth.NewJWTManager(jwtSecret, 24*time.Hour)
+
+	// Rate limiters. See docs/AUDIT.md S3: these middleware existed but
+	// were never wired into any route. Login gets a much stricter limit
+	// since it's the most common brute-force target.
+	generalLimiter := middleware.RateLimitMiddleware(middleware.NewRateLimiter(rate.Every(time.Minute/60), 60)) // 60 req/min
+	loginLimiter := middleware.RateLimitMiddleware(middleware.NewRateLimiter(rate.Every(time.Minute/10), 5))    // 10 req/min, small burst
 
 	// Init repository
 	userRepo := repositories.NewUserRepository()
@@ -50,11 +75,11 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	r.GET("/ready", healthHandler.ReadinessCheck)
 
 	// Public routes
-	r.POST("/users", userHandler.CreateUser)
-	r.POST("/auth/login", userHandler.Login)
+	r.POST("/users", generalLimiter, userHandler.CreateUser)
+	r.POST("/auth/login", loginLimiter, userHandler.Login)
 	r.GET("/currencies", currencyHandler.GetCurrencies)
 	r.GET("/currencies/:id", currencyHandler.GetCurrency)
-	r.GET("/tx/:hash", txHandler.GetTxByHash)
+	r.GET("/tx/:hash", generalLimiter, txHandler.GetTxByHash)
 
 	// Protected routes - require authentication
 	authMiddleware := middleware.AuthMiddleware(jwtManager)
@@ -62,7 +87,7 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	protected.Use(authMiddleware)
 	{
 		protected.GET("/wallet/:user_id", walletHandler.GetWallet)
-		protected.POST("/wallet/transfer", txHandler.Transfer)
+		protected.POST("/wallet/transfer", generalLimiter, txHandler.Transfer)
 		protected.GET("/transactions/:user_id", txHandler.GetTransactions)
 	}
 
