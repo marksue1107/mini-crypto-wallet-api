@@ -28,6 +28,7 @@ func LoadConfig() {
 	viper.SetDefault("redis_addr", "")
 	viper.SetDefault("max_transfer_amount", "")
 	viper.SetDefault("trusted_proxies", "")
+	viper.SetDefault("cors_allowed_origins", "")
 
 	viper.AutomaticEnv()                                   // 支援環境變數覆蓋
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // 支援 APP_ENV ➜ app.env

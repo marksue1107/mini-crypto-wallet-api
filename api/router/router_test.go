@@ -143,3 +143,54 @@ func TestErrorResponses_ConsistentShapeAcrossEndpoints(t *testing.T) {
 		})
 	}
 }
+
+// TestSetupRouter_CORS is a regression test for docs/AUDIT.md S5: without
+// any CORS configuration, a browser-based frontend on a different origin
+// can't call this API at all. It also confirms the safe-by-default
+// behavior: CORS is off entirely until CORS_ALLOWED_ORIGINS is set, and
+// only listed origins get the allow header - not a wildcard.
+func TestSetupRouter_CORS(t *testing.T) {
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
+
+	preflight := func(r http.Handler, origin string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodOptions, "/health", nil)
+		req.Header.Set("Origin", origin)
+		req.Header.Set("Access-Control-Request-Method", "GET")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	t.Run("disabled by default", func(t *testing.T) {
+		config.Config = &config.AppConfig{JWTSecret: "test-secret-at-least-32-characters-long"}
+		r := SetupRouter(nil)
+
+		w := preflight(r, "https://app.example.com")
+		assert.Empty(t, w.Header().Get("Access-Control-Allow-Origin"), "CORS must be off until CORS_ALLOWED_ORIGINS is configured")
+	})
+
+	t.Run("allows a configured origin", func(t *testing.T) {
+		config.Config = &config.AppConfig{
+			JWTSecret:          "test-secret-at-least-32-characters-long",
+			CORSAllowedOrigins: "https://app.example.com,https://admin.example.com",
+		}
+		r := SetupRouter(nil)
+
+		w := preflight(r, "https://app.example.com")
+		assert.Equal(t, "https://app.example.com", w.Header().Get("Access-Control-Allow-Origin"))
+	})
+
+	t.Run("rejects a non-whitelisted origin, never falls back to wildcard", func(t *testing.T) {
+		config.Config = &config.AppConfig{
+			JWTSecret:          "test-secret-at-least-32-characters-long",
+			CORSAllowedOrigins: "https://app.example.com",
+		}
+		r := SetupRouter(nil)
+
+		w := preflight(r, "https://evil.example.com")
+		got := w.Header().Get("Access-Control-Allow-Origin")
+		assert.NotEqual(t, "*", got)
+		assert.NotEqual(t, "https://evil.example.com", got)
+	})
+}

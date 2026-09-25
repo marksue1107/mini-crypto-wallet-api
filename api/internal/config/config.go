@@ -13,6 +13,13 @@ type AppConfig struct {
 	// the client IP. Empty (the default) means trust none - Gin will use
 	// the direct connection's remote address instead. See docs/AUDIT.md S4.
 	TrustedProxies string `mapstructure:"trusted_proxies"`
+	// CORSAllowedOrigins is a comma-separated list of origins (e.g.
+	// https://app.example.com) allowed to make cross-origin requests to
+	// this API. Empty (the default) means CORS is not enabled at all -
+	// browsers will block cross-origin requests, which is the safe
+	// default until a frontend origin is explicitly configured. Never set
+	// this to "*" together with credentialed requests. See docs/AUDIT.md S5.
+	CORSAllowedOrigins string `mapstructure:"cors_allowed_origins"`
 }
 
 var Config *AppConfig

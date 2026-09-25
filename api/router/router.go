@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 )
@@ -32,6 +33,21 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	}
 	if err := r.SetTrustedProxies(trustedProxies); err != nil {
 		log.Fatalf("❌ invalid TRUSTED_PROXIES: %v", err)
+	}
+
+	// CORS. Disabled (no middleware at all) unless CORS_ALLOWED_ORIGINS is
+	// explicitly set - the safe default is that browsers block cross-origin
+	// requests until a frontend origin is configured. Never combine a
+	// wildcard origin with AllowCredentials: true (browsers forbid it, and
+	// gin-contrib/cors will reject the config). See docs/AUDIT.md S5.
+	if config.Config.CORSAllowedOrigins != "" {
+		r.Use(cors.New(cors.Config{
+			AllowOrigins:     strings.Split(config.Config.CORSAllowedOrigins, ","),
+			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+			AllowHeaders:     []string{"Authorization", "Content-Type"},
+			AllowCredentials: true,
+			MaxAge:           12 * time.Hour,
+		}))
 	}
 
 	// 添加追蹤中間件

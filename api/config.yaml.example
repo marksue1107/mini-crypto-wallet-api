@@ -33,3 +33,8 @@ max_transfer_amount: "1000000"
 # 留空 = 不信任任何代理，直接用連線來源 IP（限流才不會被偽造的 X-Forwarded-For 繞過）。
 # 只有在服務前面真的有你自己控制的反向代理/負載平衡器時才填。
 trusted_proxies: ""
+
+# 允許跨來源請求（CORS）的前端網域（逗號分隔），例如：
+#   cors_allowed_origins: "https://app.example.com,http://localhost:5173"
+# 留空 = 完全不啟用 CORS，瀏覽器會擋掉所有跨來源請求（串接新前端前必須先設定這個）。
+cors_allowed_origins: ""
