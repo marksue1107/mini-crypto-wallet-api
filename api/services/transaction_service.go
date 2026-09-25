@@ -8,7 +8,6 @@ import (
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
 	"mini-crypto-wallet-api/utils"
-	"testing"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -155,36 +154,4 @@ func (s *TransactionService) GetTransactionsWithPagination(userID uint, offset, 
 
 func (s *TransactionService) GetTransactionByHash(hash string) (*models.Transaction, error) {
 	return s.transactionRepo.FindByHash(hash)
-}
-
-/*
-
-tester
-
-*/
-
-func (s *TransactionService) TransferWithLockOption(t *testing.T, fromID, toID uint, currencyID uint, amount decimal.Decimal, useLock bool) error {
-	if useLock {
-		return s.Transfer(fromID, toID, currencyID, amount) // 使用加鎖版本
-	}
-
-	// 模擬未加鎖（不安全寫法）
-	fromWallet, err := s.walletRepo.GetWalletByUserID(fromID)
-	if err != nil {
-		return err
-	}
-	toWallet, err := s.walletRepo.GetWalletByUserID(toID)
-	if err != nil {
-		return err
-	}
-	if fromWallet.Balance.LessThan(amount) {
-		return errors.New("insufficient balance")
-	}
-
-	fromWallet.Balance = fromWallet.Balance.Sub(amount)
-	toWallet.Balance = toWallet.Balance.Add(amount)
-
-	s.walletRepo.UpdateWallet(fromWallet)
-	s.walletRepo.UpdateWallet(toWallet)
-	return nil
 }
