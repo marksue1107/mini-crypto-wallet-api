@@ -424,9 +424,9 @@
 ---
 
 ## 第 6 批：收尾
-- [ ] 改寫根目錄 `CLAUDE.md`：只寫**長期有效的規則**（分層、decimal 鐵律、鎖定順序、錯誤格式、前後端邊界、常用指令、禁止事項），不寫「目前某處壞掉」這類會過時的狀態
-- [ ] 更新 `README.md`：功能描述與實際程式碼一致（限流、Swagger 版本、啟動方式、SQLite 限制、`/tx/:hash` 設計）
-- [ ] 產出 `docs/REMEDIATION_REPORT.md`：
+- [x] 改寫根目錄 `CLAUDE.md`：只寫**長期有效的規則**（分層、decimal 鐵律、鎖定順序、錯誤格式、前後端邊界、常用指令、禁止事項），不寫「目前某處壞掉」這類會過時的狀態
+- [x] 更新 `README.md`：功能描述與實際程式碼一致（限流、Swagger 版本、啟動方式、SQLite 限制、`/tx/:hash` 設計）
+- [x] 產出 `docs/REMEDIATION_REPORT.md`：
   - 每個 AUDIT 編號的處理狀態（已修正 / 部分修正 / 未處理 + 原因）
   - 所有 commit 列表
   - 標記為「環境不足，未驗證」的項目
@@ -439,7 +439,28 @@
 - 本檔案所有項目皆已勾選或註明原因
 
 **驗證紀錄**
-（待填寫）
+- **CLAUDE.md**：根目錄新增，內容涵蓋分層規則、decimal 鐵律、鎖定順序鐵律、
+  「`tx.Begin()` 後所有提前 return 都要 rollback」的鐵律（直接對應 N2/N3 這兩個
+  發現，避免同樣的 bug 以後又在別的地方重演）、SQLite 限制、統一錯誤格式、
+  前後端邊界、密鑰/設定政策、常用指令、禁止事項。刻意不寫任何「目前 X 壞掉」的
+  狀態描述，因為執行完這份計畫之後這些都已經修好，寫了只會過時。
+- **README.md**：除了第 4 批（S8/S5/A2/S6）與第 5 批（Q5-Q8/A3）已經改過的部分，
+  這次額外做了一輪全文比對程式碼的檢查，修正了還沒改過的地方：「Multi-currency
+  wallet support」這個宣稱其實不準確（每個使用者永遠只有一顆預設幣別的錢包，
+  沒有任何 API 可以再開別的幣別），改成準確描述現狀並加進 Future Enhancements；
+  Rate Limiting 段落補上「登入端點限制更嚴格」「偽造 X-Forwarded-For 不能繞過」；
+  Middleware Stack 補上 CORS；Testing 段落補上 `-race` 與 testcontainers/Docker
+  依賴的說明。
+- **docs/REMEDIATION_REPORT.md**：逐一核對 `docs/AUDIT.md` 全部 35 項發現
+  （M1-M6、S1-S12、A1-A7、Q1-Q10）目前的狀態，用 `grep` 實際確認 M5、S10、S12、
+  A4 這幾項確實還沒動過（`GenerateSignature` 呼叫點沒變、`trace.go` 沒變、
+  `redis`/`Redis` 除了設定欄位本身沒有任何程式碼引用），不是憑印象寫的。
+- **實際執行結果**：`cd api && go build ./... && go vet ./... && go test ./...
+  -race`（`-count=1`，因為前面已經連續 -count=3 驗證過很多次，這裡只做最後
+  一次收尾確認）全部通過。`git status` 在每個 commit 之後都確認過是乾淨的。
+- Commits（本批）：
+  - `5975d9b` docs: add CLAUDE.md, final README accuracy pass
+  - `d8e2189` docs: add final remediation report
 
 ---
 
