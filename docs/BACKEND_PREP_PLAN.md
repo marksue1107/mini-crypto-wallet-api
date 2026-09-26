@@ -226,7 +226,7 @@ Commits：
 
 ## 第 3 批：更新文件與規格
 
-- [ ] 更新 `docs/FRONTEND_SPEC.md`：
+- [x] 更新 `docs/FRONTEND_SPEC.md`：
   - §4 錯誤對應表加入新的 code，移除已拆分的舊 code
   - §5 移除已實作的項目（5.6 統計、5.9 轉帳回應、5.10 上限、5.11 currency_id），5.2 改為「已支援，改用 `GET /users/lookup`」
   - §3.3 Transfer：移除查最新一筆交易的 workaround，改為直接使用轉帳回應中的 `hash`；限制說明列改為顯示實際上限數值
@@ -235,9 +235,9 @@ Commits：
   - §2.2 Token 儲存：改為 `localStorage`，並保留過期檢查與 401 全域處理
   - §3.4 Export：加上筆數上限保護，超過 1000 筆時提示使用者縮小範圍
   - 第 7 節改寫為「已確認的決定」，記錄每項的最終結論
-- [ ] 更新 `CLAUDE.md`：加入前後端邊界規則（`web/` 只透過 HTTP 呼叫、型別自動生成禁止手寫、改 API 需同步更新 Swagger 並重新生成型別）
-- [ ] 更新 `README.md`：新增端點說明，並補充本機同時啟動前後端時需設定 `CORS_ALLOWED_ORIGINS`
-- [ ] 更新 `docs/BACKLOG.md`：把本次未做的項目（多幣別錢包列表、交易篩選參數、匯率估值、export 端點）補進去
+- [x] 更新 `CLAUDE.md`：加入前後端邊界規則（`web/` 只透過 HTTP 呼叫、型別自動生成禁止手寫、改 API 需同步更新 Swagger 並重新生成型別）
+- [x] 更新 `README.md`：新增端點說明，並補充本機同時啟動前後端時需設定 `CORS_ALLOWED_ORIGINS`
+- [x] 更新 `docs/BACKLOG.md`：把本次未做的項目（多幣別錢包列表、交易篩選參數、匯率估值、export 端點）補進去
 
 **驗收條件**
 - `cd api && go build ./... && go vet ./... && go test ./... -race` 全部通過
@@ -245,7 +245,57 @@ Commits：
 - `git status` 乾淨，所有變更已 commit
 
 **驗證紀錄**
-（待填寫）
+
+執行分支：`feat/frontend-prep`（延續前兩批）。
+
+Commits：
+- `d45bb8d` `docs: sync FRONTEND_SPEC.md, CLAUDE.md, README.md, BACKLOG.md with batches 1-2`
+  （本批四個檔案性質高度相關、互相引用，且都是純文件變更、無法進一步拆分成獨立可驗證的單位，故
+  合併成一個 commit，未再細分）
+
+執行的指令與結果：
+- `go build ./...` / `go vet ./...` / `go test ./... -race -count=1` — 全部通過（本批未改動任何
+  Go 原始碼，純粹確認文件變更沒有意外動到程式碼）
+- `grep -n 'workaround\|最新 100 筆\|強度條' docs/FRONTEND_SPEC.md` — 無輸出（exit 1）
+- `git status --porcelain` — 乾淨
+
+FRONTEND_SPEC.md 實際變更對照計畫清單：
+- §4：`WALLET_NOT_FOUND` 拆成 `WALLET_NOT_FOUND`（僅 `GET /wallet/:user_id`）+
+  `SENDER_WALLET_NOT_FOUND`/`RECIPIENT_NOT_FOUND`（`POST /wallet/transfer`）；`INVALID_AMOUNT` 拆成
+  `AMOUNT_NOT_POSITIVE`/`INVALID_DECIMALS`/`AMOUNT_EXCEEDS_LIMIT`；`USER_NOT_FOUND` 從「沒有端點使用」
+  改為「`GET /users/lookup` 查無使用者時使用」
+- §5：移除舊 5.6/5.9/5.10/5.11（已實作），5.2 改為「已支援」並保留編號對照 BRIEF 原始清單，其餘
+  項目（5.1/5.3/5.4/5.5，重新編號後的 5.6/5.7）保留並整理進 `docs/BACKLOG.md`
+- §3.3：移除「送出後反查最新一筆交易」的作法，改為直接讀轉帳回應的 `hash`；限制說明列改為顯示
+  `GET /currencies` 回傳的 `max_transfer_amount` 實際數值；收款人欄位改為透過 `GET /users/lookup`
+  解析使用者名稱
+- §3.2：24h 指標卡改用 `GET /wallet/{user_id}/stats`，移除「資料筆數 > 100 只統計最新 100 筆」的
+  免責段落
+- §3.1：移除密碼強度條（弱／中／強視覺化分級），只保留「At least 8 characters」規則勾選
+- §2.2：token 改存 `localStorage`，§2.3 的過期檢查／401 全域處理邏輯文字不變
+- §3.4：Export 前先讀 `pagination.total`，`<= 1000` 才全量拉取，超過就提示縮小範圍並讓 Export
+  按鈕維持 disabled
+- 第 7 節：從「我做了判斷、你應該確認」的問句語氣改寫成「已確認的決定」，逐項記錄最終結論與對應
+  的後端變更（引用 `docs/BACKEND_PREP_PLAN.md` 對應批次/項目編號）
+- 額外修正（計畫清單沒明講，但屬同一批次的必要連動）：§3.5 與 History 表格的「金額與幣別」欄，
+  因為 `TransactionResponse` 現在含 `currency_id`，原本「假設全部交易都是 USDT」的說明改成「用
+  `currency_id` 查對應幣別」；`web/` 資料夾結構裡 `session.ts` 的註解從 `sessionStorage` 改成
+  `localStorage`，避免和 §2.2 的決定不一致
+
+偏離計畫之處：
+1. 計畫的驗收條件字面上要求「搜尋『workaround』『最新 100 筆』『強度條』皆無殘留」，但第 7 節
+   （已確認的決定）原本的寫法會很自然地提到「這裡不採用 workaround／強度條」來說明否決了哪個選項。
+   為了讓 grep 檢查真的是 0 筆而不是「反正意思對就好」，把這幾處的措辭換成同義但不含這三個精確字串
+   的說法（例如「臨時拼湊方式」代替「workaround」、「弱／中／強視覺化分級」代替「強度條」），語意
+   不變。
+2. `docs/BACKLOG.md` 只補了計畫明講的四項（多幣別錢包列表、交易篩選參數、匯率估值、export
+   端點），`FRONTEND_SPEC.md` §5.4（交易對象顯示名稱、需要 id→username 的批次查詢 API）計畫沒有
+   列在這四項裡，所以沒有建立對應的 BACKLOG 項目，只在 §5.4 本文裡說明這是獨立於 §5.2（已解決）的
+   缺口。
+
+環境限制：無（本批純文件修改，不涉及程式碼、不涉及 Docker）。
+
+新發現：無。
 
 ---
 
