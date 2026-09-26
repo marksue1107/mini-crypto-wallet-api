@@ -15,7 +15,7 @@ import (
 // defaultCurrencyID is the auto-seeded default currency (USDT) - see
 // db_conn.seedDefaultCurrency(). Every fresh database has exactly this one
 // currency as the first row.
-const defaultCurrencyID = 1
+const defaultCurrencyID uint = 1
 
 func transferReq(from, to, currencyID uint, amount string) map[string]any {
 	return map[string]any{
