@@ -1,5 +1,7 @@
 # 💸 mini-crypto-wallet-api
 
+[![CI](https://github.com/marksue1107/mini-crypto-wallet-api/actions/workflows/api.yml/badge.svg)](https://github.com/marksue1107/mini-crypto-wallet-api/actions/workflows/api.yml)
+
 A production-ready cryptocurrency wallet backend API demonstrating enterprise-grade engineering practices for financial systems.
 
 **Tech Stack**: Golang + Gin + GORM + PostgreSQL + Kafka + JWT
