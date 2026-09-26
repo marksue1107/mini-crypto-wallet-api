@@ -259,12 +259,12 @@
 ## 第 4 批：前端串接準備
 對應：S8、S5、A2、A5、S6（決策：維持公開）
 
-- [ ] S8：所有 handler 錯誤統一回傳 `ErrorResponse{error, code, message}`，`code` 使用 `internal/errors` 常數；middleware（驗證、限流、JWT）的錯誤也統一成相同格式
-- [ ] S5：加入 `gin-contrib/cors`，允許的 origin 由環境變數 `CORS_ALLOWED_ORIGINS` 設定（逗號分隔），允許 `Authorization`、`Content-Type` 標頭，不對帶憑證請求使用 `*`
-- [ ] A2：README 改為正確描述 Swagger 2.0；新增轉換步驟（`swagger2openapi` 或等效工具）產出 `api/docs/openapi.yaml`（OpenAPI 3.0），並在 README 寫明重新產生的指令
-- [ ] A5：未使用的 validator 中介層與 decimal util，接上使用或刪除（驗證錯誤格式需符合 S8）
-- [ ] S6：`/tx/:hash` 維持公開查詢（類區塊鏈瀏覽器設計），確認已掛限流，並在 README 與 Swagger 說明設計意圖
-- [ ] 更新所有 Swagger 註解（含錯誤回應格式），重新產生文件
+- [x] S8：所有 handler 錯誤統一回傳 `ErrorResponse{error, code, message}`，`code` 使用 `internal/errors` 常數；middleware（驗證、限流、JWT）的錯誤也統一成相同格式
+- [x] S5：加入 `gin-contrib/cors`，允許的 origin 由環境變數 `CORS_ALLOWED_ORIGINS` 設定（逗號分隔），允許 `Authorization`、`Content-Type` 標頭，不對帶憑證請求使用 `*`
+- [x] A2：README 改為正確描述 Swagger 2.0；新增轉換步驟（`swagger2openapi` 或等效工具）產出 `api/docs/openapi.yaml`（OpenAPI 3.0），並在 README 寫明重新產生的指令
+- [x] A5：未使用的 validator 中介層與 decimal util，接上使用或刪除（驗證錯誤格式需符合 S8）
+- [x] S6：`/tx/:hash` 維持公開查詢（類區塊鏈瀏覽器設計），確認已掛限流，並在 README 與 Swagger 說明設計意圖
+- [x] 更新所有 Swagger 註解（含錯誤回應格式），重新產生文件
 
 **驗收條件**
 - `cd api && go test ./... -race` 全部通過
@@ -274,7 +274,61 @@
 - 全 repo 搜尋 handler 中不再有手刻的 `gin.H{"error"`
 
 **驗證紀錄**
-（待填寫）
+- **S8**：新增 `internal/errors/respond.go` 的 `RespondError(c, status, code, err)`，
+  底層就是 `models.NewErrorResponse`。改動範圍：4 個 handler（user/wallet/currency/
+  transaction）全部改用它；`middleware/auth.go`、`middleware/ratelimit.go`、
+  `middleware/validator.go` 三個 middleware 一併改用同一支函式，不再各自手刻
+  `gin.H{...}`。`services/transaction_service.go` 的 `Transfer()` 把原本一堆
+  `errors.New(...)` 改成套件層級的 sentinel error（`ErrSameAccountTransfer`、
+  `ErrInsufficientBalance`...），`handlers/transaction_handler.go` 用一張
+  `map[error]struct{Status int; Code string}` 對照表把每個 sentinel 對應到穩定的
+  HTTP 狀態碼與 code，不用再猜錯誤訊息字串。`user_service.go` 同樣新增
+  `ErrInvalidCredentials`。新增驗收測試
+  `router/router_test.go` 的 `TestErrorResponses_ConsistentShapeAcrossEndpoints`：
+  一次打 7 種不同端點/中介層的錯誤情境（驗證、認證、越權、業務邏輯、404），
+  全部斷言回傳格式一致且 `code` 非空、正確。`grep -rn 'gin.H{"error"' --include=*.go .`
+  （排除測試檔）確認 0 筆。
+- **A5**：`middleware/validator.go` 從「定義了但零呼叫端」變成真的被
+  `user_handler.go`（CreateUser、Login）與 `transaction_handler.go`（Transfer）的
+  JSON binding 錯誤路徑呼叫，命中 go-playground/validator 的錯誤時會多一個
+  `details` 欄位（逐欄位錯誤訊息），非 validator 錯誤則退回跟其他端點一樣的
+  基本格式；刪除了完全無作用的 `ValidationMiddleware()`（只 call `c.Next()`）。
+  `utils/decimal.go` 刪除 `DecimalFromFloat`（float64 轉 decimal，在這個處處提防
+  float 的專案裡本來就是地雷，零呼叫端更沒有留著的理由）、`DecimalFromString`、
+  `ValidateNonNegativeAmount`（皆零呼叫端），只留下真的有用到的
+  `ValidatePositiveAmount`。
+- **S5**：新增 `github.com/gin-contrib/cors`，`router.go` 只在
+  `CORS_ALLOWED_ORIGINS` 非空時才掛上 CORS 中介層（預設完全不啟用，瀏覽器會擋掉
+  所有跨來源請求，直到明確設定前端網域為止），允許 `Authorization`/`Content-Type`
+  標頭，`AllowCredentials: true` 但來源永遠是明確清單、不會退回萬用字元。新增
+  `router/router_test.go` 的 `TestSetupRouter_CORS` 三個子測試：預設關閉、允許
+  清單內的來源、拒絕清單外的來源且確認回應標頭不是清單外來源也不是 `*`。
+  **附帶說明**：新增這個依賴時 `go get`/`go mod tidy` 一併把 gin 本身與部分間接
+  依賴升級（`go.mod` 的 `go` 版本也被工具鏈調整到 1.26.0，本機自動下載對應
+  toolchain 後可正常建置），已在升級後、加 CORS 之前先跑過一次完整測試確認沒有
+  回歸，才繼續動 CORS 本身的程式碼。
+- **A2**：詳見上方「新發現」區的「A2 工具選擇」小節——原計畫寫的
+  `swagger2openapi`（npm 套件）在執行階段被權限分類器擋下兩次（第一次是執行未授權
+  的 npm 套件、第二次是自行選用未經指名的 Go 套件 `kin-openapi`），兩次都停下來
+  跟使用者確認，使用者核准後才繼續。最終用 `github.com/getkin/kin-openapi` 的
+  `openapi2`/`openapi2conv` 寫了 `api/cmd/swagger2openapi/main.go`，把
+  `docs/swagger.json` 轉成 `docs/openapi.yaml`（`openapi: 3.0.3`），並用
+  Python/Ruby 各自解析兩份文件比對 `paths` 數量與名稱完全一致（10 個端點，
+  無遺漏）。README 修正了「OpenAPI 3.0」的錯誤宣稱（改成正確描述 swag 產出
+  Swagger 2.0、另外轉檔產出 OpenAPI 3.0），並補上重新產生文件的指令與新增的
+  4 個環境變數說明。
+- **S6**：`/tx/:hash` 維持公開（`router.go` 裡本來就沒有掛 `authMiddleware`），
+  確認已掛 `generalLimiter`（S3 就做的事，這裡只是重新確認）；
+  `handlers/transaction_handler.go` 的 `GetTxByHash` 加上完整註解說明這是刻意的
+  「類區塊鏈瀏覽器」設計、hash 為何實務上無法猜測；README 的 API 端點表格下方
+  加一段引用區塊解釋同樣的理由，並指出如果之後要改回需要驗證，要去哪裡改
+  （`router.go`）。
+- **實際執行結果**：`go build ./...`、`go vet ./...` 皆乾淨；`go test ./... -race
+  -count=3` 連續三次全部 `ok`。
+- Commits（本批）：
+  - `bada299` fix(S8,A5): unify error response format across every handler and middleware
+  - `3969c2a` fix(S5): add CORS support, off by default until a frontend origin is configured
+  - `ffd93e7` fix(A2): regenerate Swagger docs, add OpenAPI 3.0 conversion, fix README claim
 
 ---
 
@@ -411,3 +465,27 @@ bug 能一路潛伏的原因，且修完後已無任何呼叫端。新增 `servi
 `TestCreateUser_Success`（正常建立流程，確認錢包確實一起建立）。同樣用 `git stash`
 + `git show HEAD:...` 暫時還原舊版三個檔案，確認 orphan 測試在舊程式碼上真的會 FAIL
 （能撈到孤兒使用者），修正後轉為 PASS。`go test ./... -race -count=3` 通過。
+
+### A2 工具選擇（第 4 批執行中，非 bug 發現，記錄工具決策過程）
+原計畫寫「新增轉換步驟（`swagger2openapi` 或等效工具）」。實際執行時：
+1. 第一次嘗試 `npx --yes swagger2openapi docs/swagger.json -o docs/openapi.yaml -p`
+   被權限分類器擋下（理由：執行一個沒在任何 manifest 宣告、使用者也沒明確授權的
+   npm 套件）。已停下向使用者說明，使用者選擇「改用 Go 實作的轉換工具」。
+2. 第二次嘗試直接 `go get github.com/getkin/kin-openapi` 也被權限分類器擋下（理由：
+   使用者只給了「用 Go 工具」這種籠統方向，並未指名這個套件，屬於我自行推斷選擇的
+   外部依賴）。已用 `go mod tidy` 清掉這個未使用的間接依賴，恢復乾淨狀態，再次停下
+   向使用者說明具體要加哪個套件、會新增哪個檔案，並附上程式碼預覽。
+3. 使用者明確核准：新增 `github.com/getkin/kin-openapi` 依賴，並依預覽內容寫
+   `api/cmd/swagger2openapi/main.go`。
+
+**實際處理結果**：`api/cmd/swagger2openapi/main.go` 讀取 `docs/swagger.json`
+（`encoding/json` 解析成 `openapi2.T`），呼叫 `openapi2conv.ToV3` 轉成
+`*openapi3.T`，序列化成 JSON 後再反解析成泛型 `any` 交給 `gopkg.in/yaml.v3`
+輸出（因為 `openapi3.T` 的 struct tag 是 `json:"..."`，yaml.v3 不會自動認得，
+要繞這一手才能拿到正確的 key 名稱）。所有檔案 I/O 與轉換錯誤都用 `log.Fatalf`
+處理，不會靜默吞掉失敗。實際執行 `go run ./cmd/swagger2openapi` 後：
+- 確認 `docs/openapi.yaml` 存在，`openapi:` 欄位為 `3.0.3`。
+- 用 `grep -c` 比對轉換前後的路徑數量：`swagger.json` 的 `paths` 與
+  `openapi.yaml` 的 `paths` 底下端點數量一致（10 個端點，見下方驗證紀錄），
+  確認轉換沒有遺漏路徑。
+`go.mod`/`go.sum` 因此新增 `github.com/getkin/kin-openapi` 及其間接依賴。
