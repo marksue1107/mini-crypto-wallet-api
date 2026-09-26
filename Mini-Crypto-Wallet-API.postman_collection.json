@@ -18,10 +18,16 @@
 								"exec": [
 									"if (pm.response.code === 200) {",
 									"    const response = pm.response.json();",
-									"    pm.environment.set(\"alice_id\", response.user_id);",
+									"    pm.environment.set(\"alice_id\", response.id);",
 									"    pm.test(\"User created successfully\", () => {",
-									"        pm.expect(response.message).to.eql(\"user created\");",
-									"        pm.expect(response.user_id).to.be.a('number');",
+									"        pm.expect(response.id).to.be.a('number');",
+									"        pm.expect(response.username).to.eql(\"alice\");",
+									"        pm.expect(response.password).to.not.exist;",
+									"    });",
+									"} else if (pm.response.code === 409) {",
+									"    pm.test(\"Duplicate username handled with a stable code\", () => {",
+									"        const response = pm.response.json();",
+									"        pm.expect(response.code).to.eql(\"USER_ALREADY_EXISTS\");",
 									"    });",
 									"}"
 								],
@@ -63,9 +69,10 @@
 								"exec": [
 									"if (pm.response.code === 200) {",
 									"    const response = pm.response.json();",
-									"    pm.environment.set(\"bob_id\", response.user_id);",
+									"    pm.environment.set(\"bob_id\", response.id);",
 									"    pm.test(\"User created successfully\", () => {",
-									"        pm.expect(response.message).to.eql(\"user created\");",
+									"        pm.expect(response.id).to.be.a('number');",
+									"        pm.expect(response.password).to.not.exist;",
 									"    });",
 									"}"
 								],
@@ -348,9 +355,11 @@
 									"    pm.response.to.have.status(403);",
 									"});",
 									"",
-									"pm.test(\"Error message about forbidden access\", () => {",
+									"pm.test(\"Unified error shape with stable code\", () => {",
 									"    const response = pm.response.json();",
 									"    pm.expect(response.error).to.include('forbidden');",
+									"    pm.expect(response.code).to.eql('FORBIDDEN');",
+									"    pm.expect(response.message).to.exist;",
 									"});"
 								],
 								"type": "text/javascript"
@@ -391,7 +400,7 @@
 			"name": "4. Transfer Scenarios",
 			"item": [
 				{
-					"name": "Transfer: Alice → Bob (100 USDT)",
+					"name": "Transfer: Alice \u2192 Bob (100 USDT)",
 					"event": [
 						{
 							"listen": "test",
@@ -454,9 +463,10 @@
 									"    pm.response.to.have.status(400);",
 									"});",
 									"",
-									"pm.test(\"Error about same account\", () => {",
+									"pm.test(\"Error about same account with stable code\", () => {",
 									"    const response = pm.response.json();",
 									"    pm.expect(response.error).to.include('same account');",
+									"    pm.expect(response.code).to.eql('SAME_ACCOUNT_TRANSFER');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -510,9 +520,10 @@
 									"    pm.response.to.have.status(400);",
 									"});",
 									"",
-									"pm.test(\"Error about insufficient balance\", () => {",
+									"pm.test(\"Error about insufficient balance with stable code\", () => {",
 									"    const response = pm.response.json();",
 									"    pm.expect(response.error).to.include('insufficient');",
+									"    pm.expect(response.code).to.eql('INSUFFICIENT_BALANCE');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -810,7 +821,7 @@
 									"pm.test(\"Service is healthy\", () => {",
 									"    pm.response.to.have.status(200);",
 									"    const response = pm.response.json();",
-									"    pm.expect(response.status).to.eql('ok');",
+									"    pm.expect(response.status).to.eql('healthy');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -843,7 +854,7 @@
 									"pm.test(\"Service is ready\", () => {",
 									"    pm.response.to.have.status(200);",
 									"    const response = pm.response.json();",
-									"    pm.expect(response.database).to.eql('connected');",
+									"    pm.expect(response.status).to.eql('ready');",
 									"});"
 								],
 								"type": "text/javascript"

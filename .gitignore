@@ -26,18 +26,20 @@ internal/test/*.db-journal
 # 🔐 Environment / secrets
 .env
 .env.*
+!.env.example
+/api/config.yaml
 
-# 📝 Docs / Temp / Logs
+# 📝 Temp / Logs
 *.log
-docs/
-README.md
 
 # 💻 Editor configs
 .idea/
 .vscode/
 
-# 🔄 Git metadata
-.git/
-
 # 🧪 Testing data
 internal/test/data.*
+
+# 🚫 Compiled binaries / debug artifacts (never commit build output)
+/wallet-api
+/api/wallet-api
+**/__debug_bin*
