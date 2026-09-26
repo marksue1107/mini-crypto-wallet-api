@@ -13,8 +13,20 @@
 
 ### 2. Start the API Server
 
+**Option A: docker-compose (recommended)**
+
 ```bash
-# Ensure PostgreSQL and Kafka are running (or use SQLite for dev)
+cp .env.example .env
+# edit .env: set POSTGRES_PASSWORD and a JWT_SECRET (min 32 chars, e.g. `openssl rand -base64 32`)
+docker compose up --build
+```
+
+**Option B: run locally (SQLite or your own Postgres)**
+
+```bash
+cd api
+cp config.yaml.example config.yaml
+# edit config.yaml: set jwt_secret (min 32 chars) and db_driver/postgres_dsn
 go run main/main.go
 ```
 
@@ -177,7 +189,7 @@ Execute folders in order:
 ## Troubleshooting
 
 ### "Request failed: connection refused"
-- Ensure API server is running: `go run main/main.go`
+- Ensure API server is running: `docker compose up` (or `go run main/main.go` from `api/`)
 - Check server is on port 8080: `lsof -i :8080`
 
 ### "401 Unauthorized" on protected endpoints
@@ -194,7 +206,10 @@ Execute folders in order:
 
 ### Database errors
 - Check PostgreSQL is running: `docker ps`
-- Or use SQLite for development (configured in `config.yaml`)
+- Or use SQLite for development (`db_driver: sqlite` in `config.yaml`, copied from `config.yaml.example`)
+
+### "Service refuses to start" / JWT secret error
+- `JWT_SECRET` (or `jwt_secret` in `config.yaml`) must be at least 32 characters; the service fails fast otherwise
 
 ---
 
@@ -256,4 +271,4 @@ After exploring the API with Postman, consider:
 - **Test Scripts**: All requests include validation
 - **Environment Variables**: 7 (auto-populated)
 
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-09-26
