@@ -206,34 +206,49 @@ This test compares transfer behavior with and without database locking, proving 
 
 ## 🛠️ How to Run
 
-### 1. Build the Docker image
+### One command, full stack
+
+```bash
+cp .env.example .env   # then edit .env: set POSTGRES_PASSWORD and JWT_SECRET
+docker compose up -d
+```
+
+This builds the API image (multi-stage, non-root - see `docs/AUDIT.md` Q5) and starts
+Postgres, Zookeeper, Kafka, and the API together. `postgres` and `kafka` have real
+healthchecks, and `api` won't start until both report healthy. The API image is
+distroless (no shell), so there's no container-level healthcheck on `api` itself -
+verify it came up with:
+
+```bash
+curl -f http://localhost:8080/health
+curl -f http://localhost:8080/ready
+```
+
+Then try the full flow:
+
+```bash
+curl -s -X POST localhost:8080/users -H "Content-Type: application/json" \
+  -d '{"username":"alice","email":"alice@example.com","password":"password123"}'
+
+curl -s -X POST localhost:8080/auth/login -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"password123"}'
+# use the returned token as: -H "Authorization: Bearer <token>"
+```
+
+Tear down with `docker compose down` (add `-v` to also wipe the Postgres volume).
+
+### Building/running the image by hand
 
 The Go module and Dockerfile live under `api/`:
 
 ```bash
 docker build -t mini-wallet-api ./api
-```
-
-### 2. Start Kafka and PostgreSQL
-
-> ⚠️ This step is currently being reworked — see `docs/AUDIT_REMEDIATION_PLAN.md`
-> (Batch 5 / Q6, A3). `docker-compose.yml` at the repo root currently only
-> starts `zookeeper`, `kafka`, and `postgres`; it does not yet include the API
-> service itself, and the `docker-compose.kafka.yml` filename below does not
-> exist yet.
-
-```bash
-docker compose up -d
-```
-
-### 3. Run the API container
-
-```bash
 docker run --rm -p 8080:8080 \
   -e APP_ENV=production \
   -e DB_DRIVER=postgres \
-  -e POSTGRES_DSN="host=postgres user=postgres password=secret dbname=mini_wallet port=5432 sslmode=disable" \
+  -e POSTGRES_DSN="host=postgres user=postgres password=<your-password> dbname=mini_wallet port=5432 sslmode=disable" \
   -e KAFKA_BROKER=kafka:9092 \
+  -e JWT_SECRET="<random string, at least 32 characters>" \
   mini-wallet-api
 ```
 
@@ -249,6 +264,11 @@ docker run --rm -p 8080:8080 \
 - `MAX_TRANSFER_AMOUNT` – optional per-transfer amount cap; defaults to `1000000` if unset
 
 See `api/config.yaml.example` for the full list with descriptions.
+
+> **Note**: on first startup against an empty database, the API automatically seeds
+> one default currency (`USDT`) - there's no admin endpoint to create currencies yet,
+> so without this seed a brand-new deployment couldn't create any user at all
+> (`POST /users` needs a currency to open the new user's starting wallet in).
 
 ---
 
