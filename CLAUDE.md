@@ -45,11 +45,18 @@
 ## 前後端邊界
 - 後端完全不含前端程式碼；前端若要放進這個 repo，放在根目錄新的資料夾
   （例如 `web/`），與 `api/` 平行，不要混進 `api/` 底下。
+- `web/` 與後端唯一的溝通方式是 HTTP（呼叫這個 repo 的 API）；後端不得為了
+  前端的畫面需求加入 UI 專屬邏輯或 workaround，需要新資料時一律新增通用的
+  API 端點，讓其他 API 消費者也能用。
+- `web/` 的 API client 與型別一律從 `api/docs/openapi.yaml` 自動生成（例如
+  orval、openapi-typescript），**禁止手寫**——手寫的型別會在後端改動時悄悄
+  跟 API 分岔而不會有任何編譯期或執行期警告。
 - CORS 預設關閉，前端網域要透過 `CORS_ALLOWED_ORIGINS` 環境變數明確加白名單
   才會生效（見 `router/router.go`）。
 - Swagger/OpenAPI 文件是唯一的 API contract 來源。改動任何 handler 的
   `@Summary`/`@Param`/`@Success`/`@Failure` 註解後，一定要重新產生文件（見下方
-  指令），不要讓文件與程式碼分岔。
+  指令），不要讓文件與程式碼分岔；文件重新產生後，`web/` 的自動生成型別也要
+  跟著重新產生，兩邊不可以有一邊沒更新。
 
 ## 設定與密鑰
 - 沒有任何密鑰寫死在程式碼或 committed 的設定檔裡。`api/config.yaml` 已被

@@ -409,7 +409,9 @@
 									"pm.test(\"Transfer successful\", () => {",
 									"    pm.response.to.have.status(200);",
 									"    const response = pm.response.json();",
-									"    pm.expect(response.message).to.eql('transfer successful');",
+									"    pm.expect(response.status).to.eql('completed');",
+									"    pm.expect(response.hash).to.be.a('string').and.not.empty;",
+									"    pm.expect(response.currency_id).to.eql(pm.environment.get('currency_id'));",
 									"});"
 								],
 								"type": "text/javascript"

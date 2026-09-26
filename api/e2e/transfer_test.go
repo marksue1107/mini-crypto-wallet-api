@@ -15,7 +15,7 @@ import (
 // defaultCurrencyID is the auto-seeded default currency (USDT) - see
 // db_conn.seedDefaultCurrency(). Every fresh database has exactly this one
 // currency as the first row.
-const defaultCurrencyID = 1
+const defaultCurrencyID uint = 1
 
 func transferReq(from, to, currencyID uint, amount string) map[string]any {
 	return map[string]any{
@@ -46,6 +46,19 @@ func TestTransfer_Success_BalanceAndHistory(t *testing.T) {
 
 	resp := do(t, http.MethodPost, "/wallet/transfer", transferReq(idA, idB, defaultCurrencyID, "100"), authHeader(tokenA))
 	require.Equal(t, http.StatusOK, resp.Status, string(resp.Body))
+
+	var transferBody struct {
+		FromUserID uint   `json:"from_user_id"`
+		ToUserID   uint   `json:"to_user_id"`
+		CurrencyID uint   `json:"currency_id"`
+		Amount     string `json:"amount"`
+		Hash       string `json:"hash"`
+		Status     string `json:"status"`
+	}
+	resp.decode(t, &transferBody)
+	assert.NotEmpty(t, transferBody.Hash, "transfer response must include the created transaction's hash")
+	assert.Equal(t, defaultCurrencyID, transferBody.CurrencyID)
+	assert.Equal(t, "completed", transferBody.Status)
 
 	afterA := getWallet(t, tokenA, idA)
 	before, err := decimal.NewFromString(beforeA.Balance)
@@ -80,7 +93,7 @@ func TestTransfer_Success_BalanceAndHistory(t *testing.T) {
 		if tx.FromUserID == idA && tx.ToUserID == idB && tx.Amount == "100" {
 			found = true
 			assert.Equal(t, "completed", tx.Status)
-			assert.NotEmpty(t, tx.Hash)
+			assert.Equal(t, transferBody.Hash, tx.Hash, "history hash must match the hash returned by the transfer response")
 		}
 	}
 	assert.True(t, found, "expected to find the just-made transfer in alice's transaction history")
@@ -112,10 +125,10 @@ func TestTransfer_ValidationFailures(t *testing.T) {
 		wantCode   string
 	}{
 		{"insufficient balance", "999999", http.StatusBadRequest, "INSUFFICIENT_BALANCE"},
-		{"zero amount", "0", http.StatusBadRequest, "INVALID_AMOUNT"},
-		{"negative amount", "-50", http.StatusBadRequest, "INVALID_AMOUNT"},
-		{"too many decimal places", "1.123456789", http.StatusBadRequest, "INVALID_AMOUNT"},
-		{"exceeds max transfer amount", "2000000", http.StatusBadRequest, "INVALID_AMOUNT"},
+		{"zero amount", "0", http.StatusBadRequest, "AMOUNT_NOT_POSITIVE"},
+		{"negative amount", "-50", http.StatusBadRequest, "AMOUNT_NOT_POSITIVE"},
+		{"too many decimal places", "1.123456789", http.StatusBadRequest, "INVALID_DECIMALS"},
+		{"exceeds max transfer amount", "2000000", http.StatusBadRequest, "AMOUNT_EXCEEDS_LIMIT"},
 	}
 
 	for _, tc := range cases {

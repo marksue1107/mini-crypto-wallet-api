@@ -28,12 +28,12 @@ var transferErrorResponses = map[error]struct {
 	Code   string
 }{
 	services.ErrSameAccountTransfer:  {http.StatusBadRequest, apierrors.ErrCodeSameAccountTransfer},
-	services.ErrAmountMustBePositive: {http.StatusBadRequest, apierrors.ErrCodeInvalidAmount},
-	services.ErrAmountExceedsLimit:   {http.StatusBadRequest, apierrors.ErrCodeInvalidAmount},
-	services.ErrTooManyDecimalPlaces: {http.StatusBadRequest, apierrors.ErrCodeInvalidAmount},
+	services.ErrAmountMustBePositive: {http.StatusBadRequest, apierrors.ErrCodeAmountNotPositive},
+	services.ErrAmountExceedsLimit:   {http.StatusBadRequest, apierrors.ErrCodeAmountExceedsLimit},
+	services.ErrTooManyDecimalPlaces: {http.StatusBadRequest, apierrors.ErrCodeInvalidDecimals},
 	services.ErrCurrencyNotFound:     {http.StatusNotFound, apierrors.ErrCodeNotFound},
-	services.ErrFromWalletNotFound:   {http.StatusNotFound, apierrors.ErrCodeWalletNotFound},
-	services.ErrToWalletNotFound:     {http.StatusNotFound, apierrors.ErrCodeWalletNotFound},
+	services.ErrFromWalletNotFound:   {http.StatusNotFound, apierrors.ErrCodeSenderWalletNotFound},
+	services.ErrToWalletNotFound:     {http.StatusNotFound, apierrors.ErrCodeRecipientNotFound},
 	services.ErrInsufficientBalance:  {http.StatusBadRequest, apierrors.ErrCodeInsufficientBalance},
 }
 
@@ -46,7 +46,7 @@ var transferErrorResponses = map[error]struct {
 // @Accept json
 // @Produce json
 // @Param transfer body models.TransferRequest true "Transfer info"
-// @Success 200 {object} map[string]string
+// @Success 200 {object} models.TransactionResponse
 // @Failure 400 {object} models.ErrorResponse
 // @Failure 401 {object} models.ErrorResponse
 // @Failure 403 {object} models.ErrorResponse
@@ -65,7 +65,8 @@ func (h *TransactionHandler) Transfer(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Transfer(req.FromUserID, req.ToUserID, req.CurrencyID, req.Amount); err != nil {
+	tx, err := h.service.Transfer(req.FromUserID, req.ToUserID, req.CurrencyID, req.Amount)
+	if err != nil {
 		if resp, ok := transferErrorResponses[err]; ok {
 			apierrors.RespondError(c, resp.Status, resp.Code, err)
 			return
@@ -73,7 +74,7 @@ func (h *TransactionHandler) Transfer(c *gin.Context) {
 		apierrors.RespondError(c, http.StatusInternalServerError, apierrors.ErrCodeTransactionFailed, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "transfer successful"})
+	c.JSON(http.StatusOK, models.ToTransactionResponse(tx))
 }
 
 // GetTransactions 根據使用者 ID 取得交易紀錄清單

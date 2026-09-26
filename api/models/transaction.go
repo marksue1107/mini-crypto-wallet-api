@@ -17,6 +17,7 @@ type Transaction struct {
 	ID         uint            `gorm:"primarykey"`
 	FromUserID uint            `gorm:"index;not null"`
 	ToUserID   uint            `gorm:"index;not null"`
+	CurrencyID uint            `gorm:"index;not null"`
 	Amount     decimal.Decimal `gorm:"type:decimal(20,8);not null"`
 	Hash       string          `gorm:"uniqueIndex;size:64;not null"`       // SHA256 hash (64 hex chars)
 	Signature  string          `gorm:"size:255;not null"`                  // Transaction signature

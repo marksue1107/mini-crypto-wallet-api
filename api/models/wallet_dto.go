@@ -21,15 +21,16 @@ type WalletResponse struct {
 	// to avoid exposing unnecessary database relationships
 }
 
-// WalletWithCurrencyResponse includes currency details
-// Used when the API caller explicitly needs currency information
-type WalletWithCurrencyResponse struct {
-	ID         uint            `json:"id" example:"1"`
-	UserID     uint            `json:"user_id" example:"1"`
-	CurrencyID uint            `json:"currency_id" example:"1"`
-	Balance    decimal.Decimal `json:"balance" swaggertype:"number" example:"1000.0"`
-	CreatedAt  time.Time       `json:"created_at"`
-	Currency   *CurrencyResponse `json:"currency,omitempty"`
+// WalletStatsResponse is the response for GET /wallet/{user_id}/stats. All
+// three amount fields are computed by a database aggregate (SUM/COUNT),
+// not by loading every matching transaction into the application - see
+// TransactionRepository.GetStatsSince.
+type WalletStatsResponse struct {
+	Window           string          `json:"window" example:"24h"`
+	TransactionCount int64           `json:"transaction_count" example:"3"`
+	TotalSent        decimal.Decimal `json:"total_sent" swaggertype:"number" example:"150.0"`
+	TotalReceived    decimal.Decimal `json:"total_received" swaggertype:"number" example:"50.0"`
+	BalanceChange    decimal.Decimal `json:"balance_change" swaggertype:"number" example:"-100.0"`
 }
 
 // ToWalletResponse converts a Wallet model to WalletResponse DTO
@@ -41,22 +42,4 @@ func ToWalletResponse(wallet *Wallet) *WalletResponse {
 		Balance:    wallet.Balance,
 		CreatedAt:  wallet.CreatedAt,
 	}
-}
-
-// ToWalletWithCurrencyResponse converts a Wallet model with Currency to DTO
-func ToWalletWithCurrencyResponse(wallet *Wallet) *WalletWithCurrencyResponse {
-	response := &WalletWithCurrencyResponse{
-		ID:         wallet.ID,
-		UserID:     wallet.UserID,
-		CurrencyID: wallet.CurrencyID,
-		Balance:    wallet.Balance,
-		CreatedAt:  wallet.CreatedAt,
-	}
-
-	// Only include currency if it's loaded
-	if wallet.Currency.ID != 0 {
-		response.Currency = ToCurrencyResponse(&wallet.Currency)
-	}
-
-	return response
 }

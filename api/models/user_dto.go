@@ -30,3 +30,20 @@ func ToUserResponse(user *User) *UserResponse {
 		CreatedAt: user.CreatedAt,
 	}
 }
+
+// UserLookupResponse is the response for GET /users/lookup. Deliberately
+// carries only id and username - no email, no created_at - so a caller who
+// knows (or is guessing) a username can't use this endpoint to harvest
+// other account details. See docs/BACKEND_PREP_PLAN.md 2.3.
+type UserLookupResponse struct {
+	ID       uint   `json:"id" example:"1"`
+	Username string `json:"username" example:"alice"`
+}
+
+// ToUserLookupResponse converts a User model to UserLookupResponse DTO.
+func ToUserLookupResponse(user *User) *UserLookupResponse {
+	return &UserLookupResponse{
+		ID:       user.ID,
+		Username: user.Username,
+	}
+}

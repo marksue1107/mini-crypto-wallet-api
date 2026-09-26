@@ -16,6 +16,15 @@ components:
                 is_active:
                     example: true
                     type: boolean
+                max_transfer_amount:
+                    description: |-
+                        MaxTransferAmount is the effective per-transfer limit enforced by
+                        POST /wallet/transfer (MAX_TRANSFER_AMOUNT, or its default - see
+                        services.MaxTransferAmount). It isn't a per-currency database column;
+                        every currency currently reports the same, single global limit. See
+                        docs/BACKEND_PREP_PLAN.md 2.2.
+                    example: 1e+06
+                    type: number
                 name:
                     example: Tether
                     type: string
@@ -85,6 +94,9 @@ components:
                     type: number
                 created_at:
                     type: string
+                currency_id:
+                    example: 1
+                    type: integer
                 from_user_id:
                     example: 1
                     type: integer
@@ -144,6 +156,15 @@ components:
                 - password
                 - username
             type: object
+        models.UserLookupResponse:
+            properties:
+                id:
+                    example: 1
+                    type: integer
+                username:
+                    example: alice
+                    type: string
+            type: object
         models.UserResponse:
             properties:
                 created_at:
@@ -174,6 +195,24 @@ components:
                 user_id:
                     example: 1
                     type: integer
+            type: object
+        models.WalletStatsResponse:
+            properties:
+                balance_change:
+                    example: -100
+                    type: number
+                total_received:
+                    example: 50
+                    type: number
+                total_sent:
+                    example: 150
+                    type: number
+                transaction_count:
+                    example: 3
+                    type: integer
+                window:
+                    example: 24h
+                    type: string
             type: object
 info:
     contact:
@@ -447,6 +486,52 @@ paths:
             summary: Create user
             tags:
                 - Users
+    /users/lookup:
+        get:
+            description: Look up a user's id by exact username match. Returns only id and username (never email) to avoid leaking account details via enumeration.
+            parameters:
+                - description: Username to look up
+                  in: query
+                  name: username
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.UserLookupResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Not Found
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Too Many Requests
+            security:
+                - BearerAuth: []
+            summary: Look up a user by username
+            tags:
+                - Users
     /wallet/{user_id}:
         get:
             description: Retrieve wallet balance by user ID
@@ -493,6 +578,52 @@ paths:
             summary: Get wallet balance
             tags:
                 - Wallet
+    /wallet/{user_id}/stats:
+        get:
+            description: Get transaction count/total sent/total received/balance change for a user over a time window (currently only 24h is supported)
+            parameters:
+                - description: User ID
+                  in: path
+                  name: user_id
+                  required: true
+                  schema:
+                    type: integer
+                - description: Stats window, only 24h is supported
+                  in: query
+                  name: window
+                  schema:
+                    default: 24h
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.WalletStatsResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Forbidden
+            security:
+                - BearerAuth: []
+            summary: Get wallet stats
+            tags:
+                - Wallet
     /wallet/transfer:
         post:
             description: Transfer funds between two users
@@ -509,9 +640,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                additionalProperties:
-                                    type: string
-                                type: object
+                                $ref: '#/components/schemas/models.TransactionResponse'
                     description: OK
                 "400":
                     content:

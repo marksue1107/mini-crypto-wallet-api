@@ -127,6 +127,14 @@ func (s *UserService) CreateUser(req *models.UserCreateRequest) (*models.User, e
 	return user, nil
 }
 
+// GetUserByUsername looks up a user by exact username match, for
+// GET /users/lookup. Callers must map a "not found" error to 404 +
+// ErrCodeUserNotFound themselves and must not expose anything beyond
+// id/username from the result (see models.ToUserLookupResponse).
+func (s *UserService) GetUserByUsername(username string) (*models.User, error) {
+	return s.userRepo.GetUserByUsername(username)
+}
+
 func (s *UserService) Login(username, password string) (*models.User, error) {
 	user, err := s.userRepo.GetUserByUsername(username)
 	if err != nil {

@@ -82,11 +82,13 @@ func TestTransfer_NoDeadlock_BidirectionalConcurrentTransfers(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			errsCh <- txService.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(10))
+			_, err := txService.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(10))
+			errsCh <- err
 		}()
 		go func() {
 			defer wg.Done()
-			errsCh <- txService.Transfer(bob.ID, alice.ID, currency.ID, decimal.NewFromInt(10))
+			_, err := txService.Transfer(bob.ID, alice.ID, currency.ID, decimal.NewFromInt(10))
+			errsCh <- err
 		}()
 	}
 

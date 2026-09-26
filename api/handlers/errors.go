@@ -16,4 +16,8 @@ var (
 	errFailedToFetchCurrencies   = errors.New("failed to fetch currencies")
 	errFailedToCreateUser        = errors.New("failed to create user")
 	errFailedToGenerateToken     = errors.New("failed to generate token")
+	errUnsupportedStatsWindow    = errors.New("unsupported stats window: only 24h is supported")
+	errFailedToFetchStats        = errors.New("failed to fetch wallet stats")
+	errUsernameRequired          = errors.New("username query parameter is required")
+	errUserNotFound              = errors.New("user not found")
 )

@@ -365,6 +365,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/lookup": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Look up a user's id by exact username match. Returns only id and username (never email) to avoid leaking account details via enumeration.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Look up a user by username",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username to look up",
+                        "name": "username",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UserLookupResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/wallet/transfer": {
             "post": {
                 "security": [
@@ -398,10 +456,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.TransactionResponse"
                         }
                     },
                     "400": {
@@ -494,6 +549,65 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/wallet/{user_id}/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get transaction count/total sent/total received/balance change for a user over a time window (currently only 24h is supported)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wallet"
+                ],
+                "summary": "Get wallet stats",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "24h",
+                        "description": "Stats window, only 24h is supported",
+                        "name": "window",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.WalletStatsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -518,6 +632,11 @@ const docTemplate = `{
                 "is_active": {
                     "type": "boolean",
                     "example": true
+                },
+                "max_transfer_amount": {
+                    "description": "MaxTransferAmount is the effective per-transfer limit enforced by\nPOST /wallet/transfer (MAX_TRANSFER_AMOUNT, or its default - see\nservices.MaxTransferAmount). It isn't a per-currency database column;\nevery currency currently reports the same, single global limit. See\ndocs/BACKEND_PREP_PLAN.md 2.2.",
+                    "type": "number",
+                    "example": 1000000
                 },
                 "name": {
                     "type": "string",
@@ -622,6 +741,10 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "currency_id": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "from_user_id": {
                     "type": "integer",
                     "example": 1
@@ -701,6 +824,19 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UserLookupResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "username": {
+                    "type": "string",
+                    "example": "alice"
+                }
+            }
+        },
         "models.UserResponse": {
             "type": "object",
             "properties": {
@@ -742,6 +878,31 @@ const docTemplate = `{
                 "user_id": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "models.WalletStatsResponse": {
+            "type": "object",
+            "properties": {
+                "balance_change": {
+                    "type": "number",
+                    "example": -100
+                },
+                "total_received": {
+                    "type": "number",
+                    "example": 50
+                },
+                "total_sent": {
+                    "type": "number",
+                    "example": 150
+                },
+                "transaction_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "window": {
+                    "type": "string",
+                    "example": "24h"
                 }
             }
         }

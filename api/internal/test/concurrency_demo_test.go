@@ -118,7 +118,7 @@ func simulateConcurrentTransfers(t *testing.T, service *services.TransactionServ
 			fmt.Println("🔄 正在執行轉帳 (useLock =", useLock, ")")
 			var err error
 			if useLock {
-				err = service.Transfer(fromID, toID, currencyID, amount)
+				_, err = service.Transfer(fromID, toID, currencyID, amount)
 			} else {
 				err = simulateUnsafeTransfer(walletRepo, fromID, toID, currencyID, amount)
 			}

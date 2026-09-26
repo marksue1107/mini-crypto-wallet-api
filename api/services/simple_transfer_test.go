@@ -1,9 +1,7 @@
 package services
 
 import (
-	"mini-crypto-wallet-api/db_conn"
-	"mini-crypto-wallet-api/internal/config"
-	"mini-crypto-wallet-api/models"
+	"mini-crypto-wallet-api/internal/test"
 	"mini-crypto-wallet-api/repositories"
 	"testing"
 
@@ -11,45 +9,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestSimpleTransfer is a basic transfer test that follows the existing pattern
+// TestSimpleTransfer is a basic transfer test that follows the existing
+// pattern used by transaction_service_test.go: a hermetic, temp-file-backed
+// SQLite database per test (via test.SetupTestDB/CleanupTestDB), not the
+// same fixed-path "real" database db_conn.InitDatabase() opens. The
+// previous version of this test called db_conn.InitDatabase() directly
+// against the shared relative-path mini_wallet.db file and never cleaned it
+// up, so schema changes made by a later run's AutoMigrate (e.g. adding a
+// NOT NULL column) could fail against a stale copy of that file left over
+// on disk from a previous run - a real repro of that is what motivated this
+// rewrite (see docs/BACKEND_PREP_PLAN.md batch 1 verification notes).
 func TestSimpleTransfer(t *testing.T) {
-	// Initialize config and database like the existing test
-	config.LoadConfig()
-	db_conn.InitDatabase()
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
 
-	// Initialize repositories and service
+	currency := test.CreateTestCurrency(db, "USDT")
+	alice := test.CreateTestUser(db, "alice_test")
+	bob := test.CreateTestUser(db, "bob_test")
+	test.CreateTestWallet(db, alice.ID, currency.ID, 1000)
+	test.CreateTestWallet(db, bob.ID, currency.ID, 0)
+
 	walletRepo := repositories.NewWalletRepository()
 	txRepo := repositories.NewTransactionRepository()
-	currencyRepo := repositories.NewCurrencyRepository()
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
-	// Create currency
-	currency := &models.Currency{
-		Code:     "USDT",
-		Name:     "Tether",
-		Symbol:   "$",
-		Decimals: 8,
-		IsActive: true,
-	}
-	db_conn.Conn_DB.MasterDB.FirstOrCreate(currency, models.Currency{Code: "USDT"})
-
-	// Create users
-	alice := &models.User{Username: "alice_test", Email: "alice_test@example.com", Password: "hash"}
-	bob := &models.User{Username: "bob_test", Email: "bob_test@example.com", Password: "hash"}
-	db_conn.Conn_DB.MasterDB.FirstOrCreate(alice, models.User{Username: "alice_test"})
-	db_conn.Conn_DB.MasterDB.FirstOrCreate(bob, models.User{Username: "bob_test"})
-
-	// Clean up existing wallets for these users
-	db_conn.Conn_DB.MasterDB.Where("user_id IN ?", []uint{alice.ID, bob.ID}).Delete(&models.Wallet{})
-
-	// Create wallets using repository
-	aliceWallet := &models.Wallet{UserID: alice.ID, CurrencyID: currency.ID, Balance: decimal.NewFromInt(1000)}
-	bobWallet := &models.Wallet{UserID: bob.ID, CurrencyID: currency.ID, Balance: decimal.Zero}
-	walletRepo.CreateWallet(aliceWallet)
-	walletRepo.CreateWallet(bobWallet)
-
 	// Execute transfer
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
 
 	// Assert
 	assert.NoError(t, err, "Transfer should succeed")
@@ -63,12 +48,4 @@ func TestSimpleTransfer(t *testing.T) {
 	// Verify transaction created
 	txs, _ := txRepo.GetTransactionsByUserID(alice.ID)
 	assert.GreaterOrEqual(t, len(txs), 1, "At least one transaction should exist")
-
-	// Cleanup
-	db_conn.Conn_DB.MasterDB.Where("user_id IN ?", []uint{alice.ID, bob.ID}).Delete(&models.Wallet{})
-	db_conn.Conn_DB.MasterDB.Delete(alice)
-	db_conn.Conn_DB.MasterDB.Delete(bob)
-
-	// Ensure no unused variable warning
-	_ = currencyRepo
 }
