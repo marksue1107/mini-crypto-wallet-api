@@ -28,12 +28,12 @@ var transferErrorResponses = map[error]struct {
 	Code   string
 }{
 	services.ErrSameAccountTransfer:  {http.StatusBadRequest, apierrors.ErrCodeSameAccountTransfer},
-	services.ErrAmountMustBePositive: {http.StatusBadRequest, apierrors.ErrCodeInvalidAmount},
-	services.ErrAmountExceedsLimit:   {http.StatusBadRequest, apierrors.ErrCodeInvalidAmount},
-	services.ErrTooManyDecimalPlaces: {http.StatusBadRequest, apierrors.ErrCodeInvalidAmount},
+	services.ErrAmountMustBePositive: {http.StatusBadRequest, apierrors.ErrCodeAmountNotPositive},
+	services.ErrAmountExceedsLimit:   {http.StatusBadRequest, apierrors.ErrCodeAmountExceedsLimit},
+	services.ErrTooManyDecimalPlaces: {http.StatusBadRequest, apierrors.ErrCodeInvalidDecimals},
 	services.ErrCurrencyNotFound:     {http.StatusNotFound, apierrors.ErrCodeNotFound},
-	services.ErrFromWalletNotFound:   {http.StatusNotFound, apierrors.ErrCodeWalletNotFound},
-	services.ErrToWalletNotFound:     {http.StatusNotFound, apierrors.ErrCodeWalletNotFound},
+	services.ErrFromWalletNotFound:   {http.StatusNotFound, apierrors.ErrCodeSenderWalletNotFound},
+	services.ErrToWalletNotFound:     {http.StatusNotFound, apierrors.ErrCodeRecipientNotFound},
 	services.ErrInsufficientBalance:  {http.StatusBadRequest, apierrors.ErrCodeInsufficientBalance},
 }
 

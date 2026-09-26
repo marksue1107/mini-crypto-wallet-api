@@ -125,10 +125,10 @@ func TestTransfer_ValidationFailures(t *testing.T) {
 		wantCode   string
 	}{
 		{"insufficient balance", "999999", http.StatusBadRequest, "INSUFFICIENT_BALANCE"},
-		{"zero amount", "0", http.StatusBadRequest, "INVALID_AMOUNT"},
-		{"negative amount", "-50", http.StatusBadRequest, "INVALID_AMOUNT"},
-		{"too many decimal places", "1.123456789", http.StatusBadRequest, "INVALID_AMOUNT"},
-		{"exceeds max transfer amount", "2000000", http.StatusBadRequest, "INVALID_AMOUNT"},
+		{"zero amount", "0", http.StatusBadRequest, "AMOUNT_NOT_POSITIVE"},
+		{"negative amount", "-50", http.StatusBadRequest, "AMOUNT_NOT_POSITIVE"},
+		{"too many decimal places", "1.123456789", http.StatusBadRequest, "INVALID_DECIMALS"},
+		{"exceeds max transfer amount", "2000000", http.StatusBadRequest, "AMOUNT_EXCEEDS_LIMIT"},
 	}
 
 	for _, tc := range cases {
