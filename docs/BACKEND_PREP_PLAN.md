@@ -139,23 +139,23 @@ Commits：
 ## 第 2 批：前端需要的查詢端點
 
 ### 2.1 `GET /wallet/{user_id}/stats`
-- [ ] 需 auth，並套用既有的 `RequireUserID` 水平越權檢查
-- [ ] 查詢參數 `window`，第一版只支援 `24h`，其他值回 `INVALID_REQUEST`
-- [ ] 回應：`{ window, transaction_count, total_sent, total_received, balance_change }`，金額欄位為字串格式的 decimal
-- [ ] 統計由資料庫查詢直接計算，**不可**在應用層撈全部交易再加總
-- [ ] 測試：無交易時全為零；有收有支時數值正確；超過 24 小時的交易不納入；別人的 user_id 回 403
+- [x] 需 auth，並套用既有的 `RequireUserID` 水平越權檢查
+- [x] 查詢參數 `window`，第一版只支援 `24h`，其他值回 `INVALID_REQUEST`
+- [x] 回應：`{ window, transaction_count, total_sent, total_received, balance_change }`，金額欄位為字串格式的 decimal
+- [x] 統計由資料庫查詢直接計算，**不可**在應用層撈全部交易再加總
+- [x] 測試：無交易時全為零；有收有支時數值正確；超過 24 小時的交易不納入；別人的 user_id 回 403
 
 ### 2.2 `GET /currencies` 回應補上單筆上限
-- [ ] `CurrencyResponse` 新增 `max_transfer_amount`，值取自後端設定
-- [ ] `GET /currencies/{id}` 同步
-- [ ] 測試：回應含該欄位且與設定值一致
+- [x] `CurrencyResponse` 新增 `max_transfer_amount`，值取自後端設定
+- [x] `GET /currencies/{id}` 同步
+- [x] 測試：回應含該欄位且與設定值一致
 
 ### 2.3 `GET /users/lookup`
-- [ ] 查詢參數 `username`，回傳 `{ id, username }`
-- [ ] **只回傳 id 與 username，不可回傳 email 或任何其他欄位**（避免帳號列舉取得個資）
-- [ ] 查無使用者回 `404` + `USER_NOT_FOUND`（此 code 已定義但未使用，正好啟用）
-- [ ] 需 auth，並套用限流（比照一般端點）
-- [ ] 測試：查得到、查不到、未帶 token 回 401、回應不含 email
+- [x] 查詢參數 `username`，回傳 `{ id, username }`
+- [x] **只回傳 id 與 username，不可回傳 email 或任何其他欄位**（避免帳號列舉取得個資）
+- [x] 查無使用者回 `404` + `USER_NOT_FOUND`（此 code 已定義但未使用，正好啟用）
+- [x] 需 auth，並套用限流（比照一般端點）
+- [x] 測試：查得到、查不到、未帶 token 回 401、回應不含 email
 
 **驗收條件**
 - `cd api && go build ./... && go vet ./... && go test ./... -race` 全部通過
@@ -164,7 +164,63 @@ Commits：
 - `docker compose up -d --build` 後，用真實 HTTP 呼叫三個新端點皆回應正確
 
 **驗證紀錄**
-（待填寫）
+
+執行分支：`feat/frontend-prep`（延續第 1 批，未重新切分支）。
+
+Commits：
+- `01eee41` `feat(api): add GET /wallet/{user_id}/stats`（2.1）
+- `044c8fd` `feat(api): expose max_transfer_amount on GET /currencies`（2.2；順手移除
+  `models.ToWalletWithCurrencyResponse`／`WalletWithCurrencyResponse`——這兩個是原本就沒有任何呼叫端的
+  死碼，因為 `ToCurrencyResponse` 簽名改動而必須跟著改，選擇直接刪除而非硬塞一個假參數維持相容）
+- `4f0e13c` `fix(api): type defaultCurrencyID as uint in e2e transfer tests`（跑真正的 e2e 測試時發現的
+  第 1 批遺留 bug，不屬於 2.1/2.2/2.3 任何一項，獨立成一個 commit；細節見下方「偏離計畫之處」）
+- `275584b` `feat(api): add GET /users/lookup`（2.3）
+
+執行的指令與結果：
+- `go build ./...` / `go vet ./...` — 每個 commit 完成後都跑過一次，全部通過
+- `go test ./... -race -count=1` — 每個 commit 完成後都跑過一次，全部套件 `ok`
+- `swag init -g main/main.go -o docs && go run ./cmd/swagger2openapi` 後 `git diff --exit-code docs/`
+  — 在最後一個 commit 完成後重新產生一次，乾淨（exit 0）
+- `docker compose up -d --build`：實際啟動 postgres + kafka + zookeeper + api 一套完整環境（`db_driver`
+  走 `.env` 裡設定的 postgres，非 SQLite），確認 `/health`、`/ready` 皆回 `healthy`/`ready` 後：
+  - `go test -tags=e2e ./e2e/... -v`：全部測試通過（含既有的、本批新增的
+    `wallet_stats_test.go`、`user_lookup_test.go`），跑的過程中發現並修了上面提到的
+    `defaultCurrencyID` 型別 bug
+  - 手動 `curl` 呼叫三個端點確認真實回應：
+    - `GET /currencies` → `max_transfer_amount` 為 `"1000000"`，與 `.env` 的
+      `MAX_TRANSFER_AMOUNT=1000000` 一致
+    - `GET /wallet/{id}/stats`（新註冊、無交易的使用者）→
+      `{"window":"24h","transaction_count":0,"total_sent":"0","total_received":"0","balance_change":"0"}`
+    - `GET /users/lookup?username=...` → 只回 `{"id":...,"username":"..."}`，不含 `email`
+  - 驗證完成後 `docker compose down` 關閉環境
+- 完成上述後才開始整理/切分 commit（`git add`／`git stash push --keep-index -u`／`git apply --cached`
+  對照 patch 分批 staging，過程不改動任何檔案內容），因此最終每個 commit 的程式碼與「對著真正跑起來的
+  服務測試過」的版本逐位元組相同，只是重新分組進不同 commit，不需要為了切 commit 再跑一次 docker
+
+偏離計畫之處：
+1. **發現並修復第 1 批的一個真實 bug（非本批項目）**：`e2e/transfer_test.go` 裡
+   `TestTransfer_Success_BalanceAndHistory` 新增的斷言
+   `assert.Equal(t, defaultCurrencyID, transferBody.CurrencyID)` 在對著真正跑起來的服務執行時失敗
+   （`expected: int(1) actual: uint(0x1)`）——`defaultCurrencyID` 原本宣告成無型別常數，被
+   testify 的 `assert.Equal` 裝箱成 `int`，而 `CurrencyID` 是 `uint`，型別不同視為不相等。第 1 批
+   當時只確認了 `go build -tags e2e`／`go vet -tags e2e` 通過（因為那時還沒動 Docker），沒有實際跑過
+   這個斷言，所以沒被抓到。修法是把常數宣告成 `const defaultCurrencyID uint = 1`，獨立一個
+   commit（`4f0e13c`），不歸在 2.1/2.2/2.3 任何一項下。
+2. **一個項目一個 commit 的執行方式**：跟第 1 批一樣，2.1/2.2/2.3 各自涉及的檔案有幾處共用（
+   `router/router.go` 的路由註冊、`handlers/errors.go` 的 sentinel error、
+   `models/wallet_dto.go` 同時被 2.1 新增與 2.2 的死碼清理動到）。這次改用
+   `git stash push --keep-index -u` 搭配 `git apply --cached` 對照手動切出的 patch，在不改動
+   working tree 檔案內容的前提下把「這一批要進哪個 commit」的決定放進 git index，每個 commit
+   完成後才重新產生一次文件、跑一次完整測試。過程中兩次 `git stash pop` 因為連續切分產生了
+   `handlers/errors.go`／`models/wallet_dto.go` 的 conflict markers，都是同一個 var 區塊或同一個
+   struct 定義裡「這批加的行」與「上一批已經 commit 的行」相鄰造成的純文字衝突，手動解開後內容與
+   預期的最終狀態逐行比對確認一致。
+
+環境限制：無。這批本來就需要 Docker（`docker compose up -d --build` 是驗收條件的一部分），本機
+剛好有 Docker Desktop 在跑，所以沒有「環境不足，未驗證」的項目——包含 e2e 測試在內的所有項目都是對著
+真正的 Postgres 執行並驗證過的，不是只在 SQLite 上跑。
+
+新發現：無。
 
 ---
 
