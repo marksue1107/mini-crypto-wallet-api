@@ -156,6 +156,15 @@ definitions:
     - password
     - username
     type: object
+  models.UserLookupResponse:
+    properties:
+      id:
+        example: 1
+        type: integer
+      username:
+        example: alice
+        type: string
+    type: object
   models.UserResponse:
     properties:
       created_at:
@@ -441,6 +450,44 @@ paths:
           schema:
             $ref: '#/definitions/models.ErrorResponse'
       summary: Create user
+      tags:
+      - Users
+  /users/lookup:
+    get:
+      description: Look up a user's id by exact username match. Returns only id and
+        username (never email) to avoid leaking account details via enumeration.
+      parameters:
+      - description: Username to look up
+        in: query
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserLookupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Look up a user by username
       tags:
       - Users
   /wallet/{user_id}:

@@ -106,6 +106,7 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 		protected.GET("/wallet/:user_id/stats", walletHandler.GetWalletStats)
 		protected.POST("/wallet/transfer", generalLimiter, txHandler.Transfer)
 		protected.GET("/transactions/:user_id", txHandler.GetTransactions)
+		protected.GET("/users/lookup", generalLimiter, userHandler.LookupUser)
 	}
 
 	return r

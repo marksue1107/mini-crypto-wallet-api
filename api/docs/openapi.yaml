@@ -156,6 +156,15 @@ components:
                 - password
                 - username
             type: object
+        models.UserLookupResponse:
+            properties:
+                id:
+                    example: 1
+                    type: integer
+                username:
+                    example: alice
+                    type: string
+            type: object
         models.UserResponse:
             properties:
                 created_at:
@@ -475,6 +484,52 @@ paths:
                                 $ref: '#/components/schemas/models.ErrorResponse'
                     description: Too Many Requests
             summary: Create user
+            tags:
+                - Users
+    /users/lookup:
+        get:
+            description: Look up a user's id by exact username match. Returns only id and username (never email) to avoid leaking account details via enumeration.
+            parameters:
+                - description: Username to look up
+                  in: query
+                  name: username
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.UserLookupResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Not Found
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/models.ErrorResponse'
+                    description: Too Many Requests
+            security:
+                - BearerAuth: []
+            summary: Look up a user by username
             tags:
                 - Users
     /wallet/{user_id}:

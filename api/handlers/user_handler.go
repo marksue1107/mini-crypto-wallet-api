@@ -104,3 +104,33 @@ func (h *UserHandler) Login(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// LookupUser 依使用者名稱查詢，僅回傳 id 與 username
+//
+// @Summary Look up a user by username
+// @Description Look up a user's id by exact username match. Returns only id and username (never email) to avoid leaking account details via enumeration.
+// @Tags Users
+// @Security BearerAuth
+// @Produce json
+// @Param username query string true "Username to look up"
+// @Success 200 {object} models.UserLookupResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 429 {object} models.ErrorResponse
+// @Router /users/lookup [get]
+func (h *UserHandler) LookupUser(c *gin.Context) {
+	username := c.Query("username")
+	if username == "" {
+		apierrors.RespondError(c, http.StatusBadRequest, apierrors.ErrCodeInvalidRequest, errUsernameRequired)
+		return
+	}
+
+	user, err := h.service.GetUserByUsername(username)
+	if err != nil {
+		apierrors.RespondError(c, http.StatusNotFound, apierrors.ErrCodeUserNotFound, errUserNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, models.ToUserLookupResponse(user))
+}
