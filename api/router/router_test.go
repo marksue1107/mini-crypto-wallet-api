@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,6 +46,41 @@ func TestSetupRouter_LoginIsRateLimited(t *testing.T) {
 	}
 
 	require.Equal(t, http.StatusTooManyRequests, lastCode, "expected /auth/login to eventually be rate limited")
+}
+
+// TestSetupRouter_SpoofedForwardedForDoesNotBypassRateLimit is an
+// integration-style regression test for docs/AUDIT.md S4: SetupRouter must
+// call r.SetTrustedProxies with the configured (default: empty, i.e. trust
+// no proxy) list, or Gin trusts every proxy and ClientIP() reads whatever
+// X-Forwarded-For the client sends - letting anyone bypass the per-IP rate
+// limiter just by sending a different forged header on every request. This
+// drives requests through the real router built by SetupRouter() (not the
+// rate limit middleware in isolation, which S4's existing unit test already
+// covers) from a single real RemoteAddr, each carrying a distinct spoofed
+// X-Forwarded-For, and asserts the limiter still kicks in - proving
+// ClientIP() resolved to the same real address every time, not the forged
+// header.
+func TestSetupRouter_SpoofedForwardedForDoesNotBypassRateLimit(t *testing.T) {
+	db := test.SetupTestDB()
+	defer test.CleanupTestDB(db)
+
+	config.Config = &config.AppConfig{JWTSecret: "test-secret-at-least-32-characters-long"}
+	r := SetupRouter(nil)
+
+	lastCode := http.StatusOK
+	for i := 0; i < 20; i++ {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+		req.RemoteAddr = "9.9.9.9:1111"
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("1.2.3.%d", i))
+		r.ServeHTTP(w, req)
+		lastCode = w.Code
+		if lastCode == http.StatusTooManyRequests {
+			break
+		}
+	}
+
+	require.Equal(t, http.StatusTooManyRequests, lastCode, "a spoofed X-Forwarded-For header must not let a caller bypass the per-client rate limit when no proxy is trusted")
 }
 
 // TestSetupRouter_FailsFastOnWeakJWTSecret is a regression test for
