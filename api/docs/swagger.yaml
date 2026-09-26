@@ -25,6 +25,15 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.ErrorResponse:
+    properties:
+      code:
+        type: string
+      error:
+        type: string
+      message:
+        type: string
+    type: object
   models.LoginRequest:
     properties:
       password:
@@ -48,6 +57,26 @@ definitions:
         type: integer
       username:
         type: string
+    type: object
+  models.PaginationResponse:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  models.TransactionListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.TransactionResponse'
+        type: array
+      pagination:
+        $ref: '#/definitions/models.PaginationResponse'
     type: object
   models.TransactionResponse:
     properties:
@@ -103,7 +132,7 @@ definitions:
         type: string
       password:
         example: password123
-        minLength: 6
+        minLength: 8
         type: string
       username:
         example: alice
@@ -178,12 +207,18 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       summary: User login
       tags:
       - Auth
@@ -199,6 +234,10 @@ paths:
             items:
               $ref: '#/definitions/models.CurrencyResponse'
             type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       summary: Get all currencies
       tags:
       - Currency
@@ -218,12 +257,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CurrencyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
       summary: Get currency by ID
       tags:
       - Currency
@@ -288,14 +329,23 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
-        "404":
-          description: Not Found
+            $ref: '#/definitions/models.TransactionListResponse'
+        "400":
+          description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get user transactions
@@ -303,7 +353,8 @@ paths:
       - Transactions
   /tx/{hash}:
     get:
-      description: Get a transaction detail by its unique hash
+      description: Get a transaction detail by its unique hash. Public endpoint (no
+        auth required) - see docs/AUDIT.md S6.
       parameters:
       - description: Transaction Hash
         in: path
@@ -320,9 +371,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       summary: Get transaction by hash
       tags:
       - Transactions
@@ -348,9 +401,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       summary: Create user
       tags:
       - Users
@@ -370,12 +429,22 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.WalletResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get wallet balance
@@ -399,14 +468,29 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Transfer funds

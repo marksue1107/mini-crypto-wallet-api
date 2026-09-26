@@ -128,9 +128,9 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	// Convert models to DTOs (excludes database relationships)
 	txResponses := models.ToTransactionResponses(txs)
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": txResponses,
-		"pagination": models.PaginationResponse{
+	c.JSON(http.StatusOK, models.TransactionListResponse{
+		Data: txResponses,
+		Pagination: models.PaginationResponse{
 			Page:       pagination.Page,
 			PageSize:   limit,
 			Total:      total,

@@ -44,3 +44,13 @@ func ToTransactionResponses(txs []Transaction) []TransactionResponse {
 	}
 	return responses
 }
+
+// TransactionListResponse is the paginated response shape for
+// GET /transactions/{user_id}. A concrete type here (rather than the
+// previous `map[string]interface{}` in the Swagger annotation) means
+// OpenAPI-generated frontend clients get real field types instead of
+// `any`. See docs/AUDIT.md P1/A2.
+type TransactionListResponse struct {
+	Data       []TransactionResponse `json:"data"`
+	Pagination PaginationResponse    `json:"pagination"`
+}
