@@ -569,6 +569,11 @@
                     "type": "boolean",
                     "example": true
                 },
+                "max_transfer_amount": {
+                    "description": "MaxTransferAmount is the effective per-transfer limit enforced by\nPOST /wallet/transfer (MAX_TRANSFER_AMOUNT, or its default - see\nservices.MaxTransferAmount). It isn't a per-currency database column;\nevery currency currently reports the same, single global limit. See\ndocs/BACKEND_PREP_PLAN.md 2.2.",
+                    "type": "number",
+                    "example": 1000000
+                },
                 "name": {
                     "type": "string",
                     "example": "Tether"

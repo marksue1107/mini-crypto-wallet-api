@@ -33,17 +33,6 @@ type WalletStatsResponse struct {
 	BalanceChange    decimal.Decimal `json:"balance_change" swaggertype:"number" example:"-100.0"`
 }
 
-// WalletWithCurrencyResponse includes currency details
-// Used when the API caller explicitly needs currency information
-type WalletWithCurrencyResponse struct {
-	ID         uint            `json:"id" example:"1"`
-	UserID     uint            `json:"user_id" example:"1"`
-	CurrencyID uint            `json:"currency_id" example:"1"`
-	Balance    decimal.Decimal `json:"balance" swaggertype:"number" example:"1000.0"`
-	CreatedAt  time.Time       `json:"created_at"`
-	Currency   *CurrencyResponse `json:"currency,omitempty"`
-}
-
 // ToWalletResponse converts a Wallet model to WalletResponse DTO
 func ToWalletResponse(wallet *Wallet) *WalletResponse {
 	return &WalletResponse{
@@ -53,22 +42,4 @@ func ToWalletResponse(wallet *Wallet) *WalletResponse {
 		Balance:    wallet.Balance,
 		CreatedAt:  wallet.CreatedAt,
 	}
-}
-
-// ToWalletWithCurrencyResponse converts a Wallet model with Currency to DTO
-func ToWalletWithCurrencyResponse(wallet *Wallet) *WalletWithCurrencyResponse {
-	response := &WalletWithCurrencyResponse{
-		ID:         wallet.ID,
-		UserID:     wallet.UserID,
-		CurrencyID: wallet.CurrencyID,
-		Balance:    wallet.Balance,
-		CreatedAt:  wallet.CreatedAt,
-	}
-
-	// Only include currency if it's loaded
-	if wallet.Currency.ID != 0 {
-		response.Currency = ToCurrencyResponse(&wallet.Currency)
-	}
-
-	return response
 }

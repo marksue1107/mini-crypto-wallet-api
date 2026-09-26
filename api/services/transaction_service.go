@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log"
 	"mini-crypto-wallet-api/db_conn"
-	"mini-crypto-wallet-api/internal/config"
 	"mini-crypto-wallet-api/kafka_client"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories"
@@ -13,10 +12,6 @@ import (
 
 	"github.com/shopspring/decimal"
 )
-
-// DefaultMaxTransferAmount is used when config.Config.MaxTransferAmount is
-// empty or fails to parse. See docs/AUDIT.md M6.
-const DefaultMaxTransferAmount = "1000000"
 
 // Sentinel errors for Transfer(), so handlers can map each one to a stable
 // error code for API consumers (docs/AUDIT.md S8) via errors.Is, instead of
@@ -43,20 +38,13 @@ type TransactionService struct {
 }
 
 func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.ITransaction, currencyRepo repositories.ICurrency, producer *kafka_client.KafkaProducer) *TransactionService {
-	maxAmount := decimal.RequireFromString(DefaultMaxTransferAmount)
-	if config.Config != nil && config.Config.MaxTransferAmount != "" {
-		if parsed, err := decimal.NewFromString(config.Config.MaxTransferAmount); err == nil {
-			maxAmount = parsed
-		}
-	}
-
 	return &TransactionService{
 		walletRepo:         walletRepo,
 		transactionRepo:    txRepo,
 		currencyRepo:       currencyRepo,
 		balanceHistoryRepo: repositories.NewBalanceHistoryRepository(),
 		kafkaProducer:      producer,
-		maxTransferAmount:  maxAmount,
+		maxTransferAmount:  MaxTransferAmount(),
 	}
 }
 

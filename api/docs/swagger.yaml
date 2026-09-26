@@ -16,6 +16,15 @@ definitions:
       is_active:
         example: true
         type: boolean
+      max_transfer_amount:
+        description: |-
+          MaxTransferAmount is the effective per-transfer limit enforced by
+          POST /wallet/transfer (MAX_TRANSFER_AMOUNT, or its default - see
+          services.MaxTransferAmount). It isn't a per-currency database column;
+          every currency currently reports the same, single global limit. See
+          docs/BACKEND_PREP_PLAN.md 2.2.
+        example: 1000000
+        type: number
       name:
         example: Tether
         type: string

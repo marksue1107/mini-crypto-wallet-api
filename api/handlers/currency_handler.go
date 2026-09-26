@@ -35,7 +35,7 @@ func (h *CurrencyHandler) GetCurrencies(c *gin.Context) {
 	}
 
 	// Convert models to DTOs
-	responses := models.ToCurrencyResponses(currencies)
+	responses := models.ToCurrencyResponses(currencies, h.service.MaxTransferAmount())
 	c.JSON(http.StatusOK, responses)
 }
 
@@ -64,6 +64,6 @@ func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
 	}
 
 	// Convert model to DTO
-	response := models.ToCurrencyResponse(currency)
+	response := models.ToCurrencyResponse(currency, h.service.MaxTransferAmount())
 	c.JSON(http.StatusOK, response)
 }
