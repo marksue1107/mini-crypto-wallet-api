@@ -85,6 +85,9 @@ components:
                     type: number
                 created_at:
                     type: string
+                currency_id:
+                    example: 1
+                    type: integer
                 from_user_id:
                     example: 1
                     type: integer
@@ -509,9 +512,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                additionalProperties:
-                                    type: string
-                                type: object
+                                $ref: '#/components/schemas/models.TransactionResponse'
                     description: OK
                 "400":
                     content:

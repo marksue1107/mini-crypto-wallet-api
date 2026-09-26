@@ -30,7 +30,7 @@ func TestTransfer_Success_ValidTransfer(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
 
 	// Assert - require, not assert: a failed transfer means the wallet
 	// lookups below would dereference nil pointers.
@@ -71,7 +71,7 @@ func TestTransfer_Success_BalanceHistoryRecorded(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
 	require.NoError(t, err)
 
 	// Verify balance history for Alice (debit)
@@ -117,7 +117,7 @@ func TestTransfer_Success_TransactionHashGenerated(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(50))
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(50))
 	require.NoError(t, err)
 
 	// Verify transaction has hash and signature
@@ -161,7 +161,7 @@ func TestTransfer_Fail_DoesNotLeakConnection(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := 0; i < 5; i++ {
-		err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200)) // always exceeds the 100 balance
+		_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200)) // always exceeds the 100 balance
 		require.Error(t, err)
 		require.Equal(t, 0, sqlDB.Stats().InUse,
 			"Transfer() left a connection checked out of the pool after a failed transfer (leaked, un-rolled-back transaction)")
@@ -186,7 +186,7 @@ func TestTransfer_Fail_InsufficientBalance(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer 200 (more than balance)
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
 
 	// Assert
 	require.Error(t, err)
@@ -219,7 +219,7 @@ func TestTransfer_Fail_SameAccountTransfer(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer to same account
-	err := service.Transfer(alice.ID, alice.ID, currency.ID, decimal.NewFromInt(100))
+	_, err := service.Transfer(alice.ID, alice.ID, currency.ID, decimal.NewFromInt(100))
 
 	// Assert
 	require.Error(t, err)
@@ -248,7 +248,7 @@ func TestTransfer_Fail_NegativeAmount(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try negative amount
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(-100))
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(-100))
 
 	// Assert
 	require.Error(t, err)
@@ -273,7 +273,7 @@ func TestTransfer_Fail_ZeroAmount(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try zero amount
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.Zero)
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.Zero)
 
 	// Assert
 	require.Error(t, err)
@@ -301,7 +301,7 @@ func TestTransfer_Fail_TooManyDecimalPlaces(t *testing.T) {
 	// Execute - 9 decimal places, currency only supports 8
 	amount, err := decimal.NewFromString("1.123456789")
 	require.NoError(t, err)
-	err = service.Transfer(alice.ID, bob.ID, currency.ID, amount)
+	_, err = service.Transfer(alice.ID, bob.ID, currency.ID, amount)
 
 	// Assert
 	require.Error(t, err)
@@ -334,7 +334,7 @@ func TestTransfer_Fail_ExceedsMaxAmount(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - exceeds DefaultMaxTransferAmount (1,000,000)
-	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(2_000_000))
+	_, err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(2_000_000))
 
 	// Assert
 	require.Error(t, err)
@@ -357,7 +357,7 @@ func TestTransfer_Fail_FromWalletNotFound(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer from non-existent user ID 999
-	err := service.Transfer(999, bob.ID, currency.ID, decimal.NewFromInt(100))
+	_, err := service.Transfer(999, bob.ID, currency.ID, decimal.NewFromInt(100))
 
 	// Assert
 	require.Error(t, err)
@@ -380,7 +380,7 @@ func TestTransfer_Fail_ToWalletNotFound(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer to non-existent user ID 999
-	err := service.Transfer(alice.ID, 999, currency.ID, decimal.NewFromInt(100))
+	_, err := service.Transfer(alice.ID, 999, currency.ID, decimal.NewFromInt(100))
 
 	// Assert
 	require.Error(t, err)
@@ -406,7 +406,7 @@ func TestTransfer_Fail_InvalidCurrency(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute - try to transfer with mismatched currency (Alice USDT → Bob BTC)
-	err := service.Transfer(alice.ID, bob.ID, usdtCurrency.ID, decimal.NewFromInt(100))
+	_, err := service.Transfer(alice.ID, bob.ID, usdtCurrency.ID, decimal.NewFromInt(100))
 
 	// Assert
 	require.Error(t, err)
@@ -443,9 +443,9 @@ func TestTransfer_ConcurrentTransfers_NoRaceCondition(t *testing.T) {
 			defer wg.Done()
 			var err error
 			if index%2 == 0 {
-				err = service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
+				_, err = service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(100))
 			} else {
-				err = service.Transfer(alice.ID, charlie.ID, currency.ID, decimal.NewFromInt(100))
+				_, err = service.Transfer(alice.ID, charlie.ID, currency.ID, decimal.NewFromInt(100))
 			}
 			if err != nil {
 				errorsChan <- err
@@ -500,13 +500,13 @@ func TestTransfer_MultipleSequential(t *testing.T) {
 	service := NewTransactionService(walletRepo, txRepo, repositories.NewCurrencyRepository(), nil)
 
 	// Execute multiple transfers
-	err1 := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(300))
+	_, err1 := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(300))
 	require.NoError(t, err1)
 
-	err2 := service.Transfer(alice.ID, charlie.ID, currency.ID, decimal.NewFromInt(200))
+	_, err2 := service.Transfer(alice.ID, charlie.ID, currency.ID, decimal.NewFromInt(200))
 	require.NoError(t, err2)
 
-	err3 := service.Transfer(bob.ID, charlie.ID, currency.ID, decimal.NewFromInt(100))
+	_, err3 := service.Transfer(bob.ID, charlie.ID, currency.ID, decimal.NewFromInt(100))
 	require.NoError(t, err3)
 
 	// Verify final balances

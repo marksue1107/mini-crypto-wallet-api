@@ -15,6 +15,7 @@ type TransactionResponse struct {
 	ID         uint            `json:"id" example:"1"`
 	FromUserID uint            `json:"from_user_id" example:"1"`
 	ToUserID   uint            `json:"to_user_id" example:"2"`
+	CurrencyID uint            `json:"currency_id" example:"1"`
 	Amount     decimal.Decimal `json:"amount" swaggertype:"number" example:"100.0"`
 	Hash       string          `json:"hash" example:"abc123..."`
 	Signature  string          `json:"signature" example:"SIG-1-100-123456"`
@@ -28,6 +29,7 @@ func ToTransactionResponse(tx *Transaction) *TransactionResponse {
 		ID:         tx.ID,
 		FromUserID: tx.FromUserID,
 		ToUserID:   tx.ToUserID,
+		CurrencyID: tx.CurrencyID,
 		Amount:     tx.Amount,
 		Hash:       tx.Hash,
 		Signature:  tx.Signature,

@@ -47,6 +47,19 @@ func TestTransfer_Success_BalanceAndHistory(t *testing.T) {
 	resp := do(t, http.MethodPost, "/wallet/transfer", transferReq(idA, idB, defaultCurrencyID, "100"), authHeader(tokenA))
 	require.Equal(t, http.StatusOK, resp.Status, string(resp.Body))
 
+	var transferBody struct {
+		FromUserID uint   `json:"from_user_id"`
+		ToUserID   uint   `json:"to_user_id"`
+		CurrencyID uint   `json:"currency_id"`
+		Amount     string `json:"amount"`
+		Hash       string `json:"hash"`
+		Status     string `json:"status"`
+	}
+	resp.decode(t, &transferBody)
+	assert.NotEmpty(t, transferBody.Hash, "transfer response must include the created transaction's hash")
+	assert.Equal(t, defaultCurrencyID, transferBody.CurrencyID)
+	assert.Equal(t, "completed", transferBody.Status)
+
 	afterA := getWallet(t, tokenA, idA)
 	before, err := decimal.NewFromString(beforeA.Balance)
 	require.NoError(t, err)
@@ -80,7 +93,7 @@ func TestTransfer_Success_BalanceAndHistory(t *testing.T) {
 		if tx.FromUserID == idA && tx.ToUserID == idB && tx.Amount == "100" {
 			found = true
 			assert.Equal(t, "completed", tx.Status)
-			assert.NotEmpty(t, tx.Hash)
+			assert.Equal(t, transferBody.Hash, tx.Hash, "history hash must match the hash returned by the transfer response")
 		}
 	}
 	assert.True(t, found, "expected to find the just-made transfer in alice's transaction history")

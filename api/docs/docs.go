@@ -398,10 +398,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.TransactionResponse"
                         }
                     },
                     "400": {
@@ -621,6 +618,10 @@ const docTemplate = `{
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "currency_id": {
+                    "type": "integer",
+                    "example": 1
                 },
                 "from_user_id": {
                     "type": "integer",

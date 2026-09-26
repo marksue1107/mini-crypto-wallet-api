@@ -60,25 +60,25 @@ func NewTransactionService(walletRepo repositories.IWallet, txRepo repositories.
 	}
 }
 
-func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount decimal.Decimal) error {
+func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount decimal.Decimal) (*models.Transaction, error) {
 	if fromID == toID {
-		return ErrSameAccountTransfer
+		return nil, ErrSameAccountTransfer
 	}
 
 	// 驗證金額
 	if !utils.ValidatePositiveAmount(amount) {
-		return ErrAmountMustBePositive
+		return nil, ErrAmountMustBePositive
 	}
 	if amount.GreaterThan(s.maxTransferAmount) {
-		return ErrAmountExceedsLimit
+		return nil, ErrAmountExceedsLimit
 	}
 
 	currency, err := s.currencyRepo.GetCurrencyByID(currencyID)
 	if err != nil {
-		return ErrCurrencyNotFound
+		return nil, ErrCurrencyNotFound
 	}
 	if !amount.Equal(amount.Round(int32(currency.Decimals))) {
-		return ErrTooManyDecimalPlaces
+		return nil, ErrTooManyDecimalPlaces
 	}
 
 	tx := db_conn.Conn_DB.MasterDB.Begin()
@@ -127,11 +127,11 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 
 	lowWallet, err := s.walletRepo.GetWalletByUserIDAndCurrencyWithTx(lowID, currencyID, tx)
 	if err != nil {
-		return walletNotFoundErr(lowID)
+		return nil, walletNotFoundErr(lowID)
 	}
 	highWallet, err := s.walletRepo.GetWalletByUserIDAndCurrencyWithTx(highID, currencyID, tx)
 	if err != nil {
-		return walletNotFoundErr(highID)
+		return nil, walletNotFoundErr(highID)
 	}
 
 	var fromWallet, toWallet *models.Wallet
@@ -143,7 +143,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 
 	// 使用 decimal 比較
 	if fromWallet.Balance.LessThan(amount) {
-		return ErrInsufficientBalance
+		return nil, ErrInsufficientBalance
 	}
 
 	// 記錄變動前的餘額
@@ -158,16 +158,17 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	// returning - see docs/AUDIT.md S9.
 	if err := s.walletRepo.UpdateWallet(fromWallet, tx); err != nil {
 		log.Println("⚠️ failed to update from_wallet during transfer:", err)
-		return ErrTransferFailed
+		return nil, ErrTransferFailed
 	}
 	if err := s.walletRepo.UpdateWallet(toWallet, tx); err != nil {
 		log.Println("⚠️ failed to update to_wallet during transfer:", err)
-		return ErrTransferFailed
+		return nil, ErrTransferFailed
 	}
 
 	transaction := &models.Transaction{
 		FromUserID: fromID,
 		ToUserID:   toID,
+		CurrencyID: currencyID,
 		Amount:     amount,
 		Status:     "completed",
 	}
@@ -176,7 +177,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 
 	if err := s.transactionRepo.CreateTransaction(transaction, tx); err != nil {
 		log.Println("⚠️ failed to create transaction record during transfer:", err)
-		return ErrTransferFailed
+		return nil, ErrTransferFailed
 	}
 
 	// 記錄餘額變動歷史
@@ -191,7 +192,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	}
 	if err := s.balanceHistoryRepo.CreateHistory(fromHistory, tx); err != nil {
 		log.Println("⚠️ failed to record from_user balance history during transfer:", err)
-		return ErrTransferFailed
+		return nil, ErrTransferFailed
 	}
 
 	toHistory := &models.BalanceHistory{
@@ -205,7 +206,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 	}
 	if err := s.balanceHistoryRepo.CreateHistory(toHistory, tx); err != nil {
 		log.Println("⚠️ failed to record to_user balance history during transfer:", err)
-		return ErrTransferFailed
+		return nil, ErrTransferFailed
 	}
 
 	if commitDB := tx.Commit(); commitDB.Error != nil {
@@ -213,7 +214,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 		// caller, since it can contain internal details (table/constraint
 		// names, driver-specific text). See docs/AUDIT.md S9.
 		log.Println("⚠️ failed to commit transfer transaction:", commitDB.Error)
-		return ErrTransferFailed
+		return nil, ErrTransferFailed
 	}
 	committed = true
 
@@ -230,7 +231,7 @@ func (s *TransactionService) Transfer(fromID, toID uint, currencyID uint, amount
 			log.Println("⚠️ Kafka tx.created 發送失敗:", err)
 		}
 	}
-	return nil
+	return transaction, nil
 }
 
 func (s *TransactionService) GetTransactions(userID uint) ([]models.Transaction, error) {
