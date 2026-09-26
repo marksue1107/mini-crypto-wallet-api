@@ -33,3 +33,12 @@ jobs:
 
       - name: go test (race)
         run: go test ./... -race -count=1
+
+      - name: forbid "testing" import outside _test.go files
+        run: |
+          matches=$(grep -rl '"testing"' --include='*.go' . | grep -v '_test\.go$' || true)
+          if [ -n "$matches" ]; then
+            echo "Non-test files must not import \"testing\":"
+            echo "$matches"
+            exit 1
+          fi
