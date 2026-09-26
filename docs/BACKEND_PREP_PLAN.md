@@ -301,12 +301,21 @@ FRONTEND_SPEC.md 實際變更對照計畫清單：
 
 ## 第 4 批：收尾
 
-- [ ] push `feat/frontend-prep` 到 origin
-- [ ] 產出 PR 標題與描述文字，直接輸出在回覆中並用 markdown code block 包起來，供使用者在 GitHub 網頁手動開 PR（`gh` 目前無法安裝）
+- [x] push `feat/frontend-prep` 到 origin
+- [x] 產出 PR 標題與描述文字，直接輸出在回覆中並用 markdown code block 包起來，供使用者在 GitHub 網頁手動開 PR（`gh` 目前無法安裝）
 - [ ] 使用者建立 PR 後，依其提供的網址查詢 CI 狀態並回報；失敗時分析原因，不自行修正後推送
+      （等待使用者提供 PR 網址，見下方驗證紀錄）
 
 **驗收條件**
 - 分支已推送，PR 描述文字已輸出
+
+**驗證紀錄**
+
+- `git push -u origin feat/frontend-prep` — 成功，遠端建立 `feat/frontend-prep` 分支並設定 tracking，
+  遠端提示的開 PR 連結：
+  `https://github.com/marksue1107/mini-crypto-wallet-api/pull/new/feat/frontend-prep`
+- PR 標題與描述文字已在對話中輸出（見上方回覆），供使用者複製貼上手動開 PR
+- 第三項（查 CI 狀態）需要使用者實際建立 PR 並提供網址後才能繼續，目前狀態：等待中
 
 **驗證紀錄**
 （待填寫）
