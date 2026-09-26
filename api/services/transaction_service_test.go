@@ -189,7 +189,7 @@ func TestTransfer_Fail_InsufficientBalance(t *testing.T) {
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(200))
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "insufficient balance")
 
 	// Verify balances unchanged
@@ -222,7 +222,7 @@ func TestTransfer_Fail_SameAccountTransfer(t *testing.T) {
 	err := service.Transfer(alice.ID, alice.ID, currency.ID, decimal.NewFromInt(100))
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot transfer to the same account")
 
 	// Verify balance unchanged
@@ -251,7 +251,7 @@ func TestTransfer_Fail_NegativeAmount(t *testing.T) {
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(-100))
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "amount must be positive")
 }
 
@@ -276,7 +276,7 @@ func TestTransfer_Fail_ZeroAmount(t *testing.T) {
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.Zero)
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "amount must be positive")
 }
 
@@ -304,7 +304,7 @@ func TestTransfer_Fail_TooManyDecimalPlaces(t *testing.T) {
 	err = service.Transfer(alice.ID, bob.ID, currency.ID, amount)
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "decimal places")
 
 	// Verify balance unchanged
@@ -337,7 +337,7 @@ func TestTransfer_Fail_ExceedsMaxAmount(t *testing.T) {
 	err := service.Transfer(alice.ID, bob.ID, currency.ID, decimal.NewFromInt(2_000_000))
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum transfer limit")
 }
 
@@ -360,7 +360,7 @@ func TestTransfer_Fail_FromWalletNotFound(t *testing.T) {
 	err := service.Transfer(999, bob.ID, currency.ID, decimal.NewFromInt(100))
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "wallet not found")
 }
 
@@ -383,7 +383,7 @@ func TestTransfer_Fail_ToWalletNotFound(t *testing.T) {
 	err := service.Transfer(alice.ID, 999, currency.ID, decimal.NewFromInt(100))
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "wallet not found")
 }
 
@@ -409,7 +409,7 @@ func TestTransfer_Fail_InvalidCurrency(t *testing.T) {
 	err := service.Transfer(alice.ID, bob.ID, usdtCurrency.ID, decimal.NewFromInt(100))
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "wallet not found")
 }
 
