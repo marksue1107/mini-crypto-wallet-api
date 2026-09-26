@@ -1,10 +1,14 @@
 package repositories
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 	"mini-crypto-wallet-api/db_conn"
 	"mini-crypto-wallet-api/models"
 	"mini-crypto-wallet-api/repositories/entity"
+
+	"github.com/shopspring/decimal"
 )
 
 type transactionRepository struct {
@@ -65,4 +69,36 @@ func (r *transactionRepository) FindByHash(hash string) (*models.Transaction, er
 		return nil, err
 	}
 	return &tx, nil
+}
+
+// sumRow scans a single `COALESCE(SUM(amount), 0) AS total` aggregate
+// column. decimal.Decimal implements sql.Scanner, so this works regardless
+// of whether the driver hands back a string, []byte, int64, or float64 for
+// that column.
+type sumRow struct {
+	Total decimal.Decimal
+}
+
+func (r *transactionRepository) GetStatsSince(userID uint, since time.Time) (count int64, totalSent, totalReceived decimal.Decimal, err error) {
+	if err = r.DBClient.MasterDB.Model(&models.Transaction{}).
+		Where("(from_user_id = ? OR to_user_id = ?) AND created_at >= ?", userID, userID, since).
+		Count(&count).Error; err != nil {
+		return
+	}
+
+	var sent, received sumRow
+	if err = r.DBClient.MasterDB.Model(&models.Transaction{}).
+		Where("from_user_id = ? AND created_at >= ?", userID, since).
+		Select("COALESCE(SUM(amount), 0) AS total").
+		Scan(&sent).Error; err != nil {
+		return
+	}
+	if err = r.DBClient.MasterDB.Model(&models.Transaction{}).
+		Where("to_user_id = ? AND created_at >= ?", userID, since).
+		Select("COALESCE(SUM(amount), 0) AS total").
+		Scan(&received).Error; err != nil {
+		return
+	}
+
+	return count, sent.Total, received.Total, nil
 }

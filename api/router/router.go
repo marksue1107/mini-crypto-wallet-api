@@ -75,7 +75,7 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 
 	// Init service
 	userService := services.NewUserService(userRepo, walletRepo, currencyRepo)
-	walletService := services.NewWalletService(walletRepo)
+	walletService := services.NewWalletService(walletRepo, txRepo)
 	txService := services.NewTransactionService(walletRepo, txRepo, currencyRepo, producer)
 	currencyService := services.NewCurrencyService(currencyRepo)
 
@@ -103,6 +103,7 @@ func SetupRouter(producer *kafka_client.KafkaProducer) *gin.Engine {
 	protected.Use(authMiddleware)
 	{
 		protected.GET("/wallet/:user_id", walletHandler.GetWallet)
+		protected.GET("/wallet/:user_id/stats", walletHandler.GetWalletStats)
 		protected.POST("/wallet/transfer", generalLimiter, txHandler.Transfer)
 		protected.GET("/transactions/:user_id", txHandler.GetTransactions)
 	}

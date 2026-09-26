@@ -21,6 +21,18 @@ type WalletResponse struct {
 	// to avoid exposing unnecessary database relationships
 }
 
+// WalletStatsResponse is the response for GET /wallet/{user_id}/stats. All
+// three amount fields are computed by a database aggregate (SUM/COUNT),
+// not by loading every matching transaction into the application - see
+// TransactionRepository.GetStatsSince.
+type WalletStatsResponse struct {
+	Window           string          `json:"window" example:"24h"`
+	TransactionCount int64           `json:"transaction_count" example:"3"`
+	TotalSent        decimal.Decimal `json:"total_sent" swaggertype:"number" example:"150.0"`
+	TotalReceived    decimal.Decimal `json:"total_received" swaggertype:"number" example:"50.0"`
+	BalanceChange    decimal.Decimal `json:"balance_change" swaggertype:"number" example:"-100.0"`
+}
+
 // WalletWithCurrencyResponse includes currency details
 // Used when the API caller explicitly needs currency information
 type WalletWithCurrencyResponse struct {

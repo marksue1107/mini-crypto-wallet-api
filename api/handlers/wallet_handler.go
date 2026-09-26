@@ -56,3 +56,43 @@ func (h *WalletHandler) GetWallet(c *gin.Context) {
 	response := models.ToWalletResponse(wallet)
 	c.JSON(http.StatusOK, response)
 }
+
+// GetWalletStats 取得使用者過去 24 小時的交易統計
+//
+// @Summary Get wallet stats
+// @Description Get transaction count/total sent/total received/balance change for a user over a time window (currently only 24h is supported)
+// @Tags Wallet
+// @Security BearerAuth
+// @Produce json
+// @Param user_id path int true "User ID"
+// @Param window query string false "Stats window, only 24h is supported" default(24h)
+// @Success 200 {object} models.WalletStatsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 403 {object} models.ErrorResponse
+// @Router /wallet/{user_id}/stats [get]
+func (h *WalletHandler) GetWalletStats(c *gin.Context) {
+	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
+	if err != nil {
+		apierrors.RespondError(c, http.StatusBadRequest, apierrors.ErrCodeInvalidRequest, errInvalidUserID)
+		return
+	}
+
+	// 檢查用戶只能查看自己的統計
+	if !middleware.RequireUserID(c, uint(userID)) {
+		return
+	}
+
+	if window := c.DefaultQuery("window", services.StatsWindow24h); window != services.StatsWindow24h {
+		apierrors.RespondError(c, http.StatusBadRequest, apierrors.ErrCodeInvalidRequest, errUnsupportedStatsWindow)
+		return
+	}
+
+	stats, err := h.service.GetStats(uint(userID))
+	if err != nil {
+		apierrors.RespondError(c, http.StatusInternalServerError, apierrors.ErrCodeInternalError, errFailedToFetchStats)
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}

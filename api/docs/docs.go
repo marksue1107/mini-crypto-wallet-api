@@ -491,6 +491,65 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/wallet/{user_id}/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get transaction count/total sent/total received/balance change for a user over a time window (currently only 24h is supported)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wallet"
+                ],
+                "summary": "Get wallet stats",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "24h",
+                        "description": "Stats window, only 24h is supported",
+                        "name": "window",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.WalletStatsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -743,6 +802,31 @@ const docTemplate = `{
                 "user_id": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "models.WalletStatsResponse": {
+            "type": "object",
+            "properties": {
+                "balance_change": {
+                    "type": "number",
+                    "example": -100
+                },
+                "total_received": {
+                    "type": "number",
+                    "example": 50
+                },
+                "total_sent": {
+                    "type": "number",
+                    "example": 150
+                },
+                "transaction_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "window": {
+                    "type": "string",
+                    "example": "24h"
                 }
             }
         }

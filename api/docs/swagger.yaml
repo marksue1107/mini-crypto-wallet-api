@@ -178,6 +178,24 @@ definitions:
         example: 1
         type: integer
     type: object
+  models.WalletStatsResponse:
+    properties:
+      balance_change:
+        example: -100
+        type: number
+      total_received:
+        example: 50
+        type: number
+      total_sent:
+        example: 150
+        type: number
+      transaction_count:
+        example: 3
+        type: integer
+      window:
+        example: 24h
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -451,6 +469,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Get wallet balance
+      tags:
+      - Wallet
+  /wallet/{user_id}/stats:
+    get:
+      description: Get transaction count/total sent/total received/balance change
+        for a user over a time window (currently only 24h is supported)
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - default: 24h
+        description: Stats window, only 24h is supported
+        in: query
+        name: window
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.WalletStatsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get wallet stats
       tags:
       - Wallet
   /wallet/transfer:
