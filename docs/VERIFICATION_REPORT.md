@@ -1,7 +1,6 @@
 # 合併前驗證報告
 
-依據：`docs/PRE_MERGE_VERIFICATION_PLAN.md`（若該檔案不存在，指使用者於對話中提供的
-「合併前驗證計畫」）
+依據：`docs/VERIFICATION_PLAN.md`
 分支：`fix/audit-remediation`（比較基準：`main`）
 本檔案在驗證進行過程中逐步填寫，各節「驗證紀錄」與計畫檔的勾選狀態同步更新。
 
