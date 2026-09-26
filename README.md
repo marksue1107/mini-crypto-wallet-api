@@ -191,12 +191,14 @@ This test compares transfer behavior with and without database locking, proving 
 |--------|------------------------------|----------------------------------|---------------|
 | POST   | `/users`                     | Create a new user + wallet       | No            |
 | POST   | `/auth/login`                | Authenticate and get JWT token   | No            |
-| GET    | `/currencies`                | List all currencies              | No            |
-| GET    | `/currencies/{id}`           | Get currency by ID               | No            |
+| GET    | `/currencies`                | List all currencies (includes `max_transfer_amount`) | No |
+| GET    | `/currencies/{id}`           | Get currency by ID (includes `max_transfer_amount`) | No |
 | GET    | `/wallet/{user_id}`          | Get wallet balance               | Yes (JWT)     |
+| GET    | `/wallet/{user_id}/stats`    | Get trailing-24h transaction stats (count/sent/received/balance change) | Yes (JWT) |
 | POST   | `/wallet/transfer`           | Transfer funds between users     | Yes (JWT)     |
 | GET    | `/transactions/{user_id}`    | Get transaction history (paginated) | Yes (JWT)  |
 | GET    | `/tx/{hash}`                 | Query transaction by hash        | No            |
+| GET    | `/users/lookup`              | Look up a user's id by exact username (returns only `id`/`username`) | Yes (JWT) |
 | GET    | `/health`                    | Health check                     | No            |
 | GET    | `/ready`                     | Readiness check (DB connectivity) | No           |
 
@@ -285,6 +287,11 @@ docker run --rm -p 8080:8080 \
 - `MAX_TRANSFER_AMOUNT` – optional per-transfer amount cap; defaults to `1000000` if unset
 
 See `api/config.yaml.example` for the full list with descriptions.
+
+> **Running a frontend against this API locally?** CORS is disabled by default (see
+> above), so a browser-based frontend running on its own dev server (e.g.
+> `http://localhost:5173` for Vite) will have its requests blocked until you set
+> `CORS_ALLOWED_ORIGINS` to that origin in `.env` and restart the API.
 
 > **Note**: on first startup against an empty database, the API automatically seeds
 > one default currency (`USDT`) - there's no admin endpoint to create currencies yet,

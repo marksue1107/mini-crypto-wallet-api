@@ -5,6 +5,12 @@
 Issue（標題 → Issue 標題，其餘內容 → Issue 內文）。目前因為 `gh` CLI 無法在本機
 安裝，所以先整理在這裡，之後要開 Issue 時直接複製即可。
 
+`[FE*]` 開頭的項目來源不同：整理自 `docs/FRONTEND_SPEC.md` §5「後端目前不支援的
+功能」，是前端規格制定過程中發現的**功能缺口**，不是稽核發現的缺陷——
+`docs/BACKEND_PREP_PLAN.md` 已經把其中影響前端第一版最深的四項（轉帳回應缺
+`hash`、error code 過於籠統、缺統計/上限查詢 API）處理掉了，這裡列的是**還沒
+處理、前端第一版會繞過或隱藏**的部分。
+
 ---
 
 ## [M5] Transaction.Signature 不是真正的密碼學簽章
@@ -229,3 +235,78 @@ Close()` 成功關閉時完全不輸出任何 log（目前的實作只有失敗�
 在 `Close()` 成功關閉時補一行 info 等級的 log（例如
 `log.Println("✅ Kafka producer closed cleanly")`），讓 graceful shutdown 的
 每個步驟在 log 裡都有直接對應的證據。
+
+---
+
+## [FE1] 沒有列出使用者所有幣別錢包的 API
+
+**嚴重度**：Low（功能缺口，非缺陷）
+**位置**：`api/handlers/wallet_handler.go`（`GetWallet` 底層呼叫
+`GetWalletByUserID(userID)`，只用 `user_id` 查詢，不帶 `currency_id`）
+
+**問題描述**：
+資料庫 schema 已經支援一個使用者對每個幣別各有一顆錢包（`wallets` 表以
+`(user_id, currency_id)` 為鍵），但沒有任何端點可以「列出某使用者名下所有
+錢包」。`GET /wallet/{user_id}` 目前只用 `user_id` 查詢單一筆，一旦使用者
+真的持有超過一顆錢包，回傳的會是 GORM 預設排序下的任一筆，行為未定義。
+`docs/FRONTEND_SPEC.md` §3.2/§5 因此第一版的 Assets 區塊只顯示單一錢包。
+
+**建議修法**：
+新增 `GET /wallets`（帶 auth，回傳當前登入使用者名下所有錢包），多幣別功能
+真的啟用後前端才能顯示完整的資產列表。若要保留 `GET /wallet/{user_id}`
+相容，需要求帶 `currency_id` query 參數並改用
+`GetWalletByUserIDAndCurrency`，不要繼續依賴「只用 user_id 查詢」的隱含假設。
+
+---
+
+## [FE2] 交易紀錄查詢不支援方向／幣別／日期篩選
+
+**嚴重度**：Low（功能缺口，非缺陷）
+**位置**：`api/handlers/transaction_handler.go`（`GetTransactions`）；
+`api/repositories/transaction_repository.go`
+（`GetTransactionsByUserIDWithPagination` 只接受 `offset`/`limit`）
+
+**問題描述**：
+History 頁需要的 Sent/Received、幣別、日期區間篩選，後端完全沒有對應查詢
+參數，只能撈全部（受限於 `page_size` 上限 100）再由前端自行篩選，資料量一大
+就會失真。`docs/FRONTEND_SPEC.md` §3.4/§5 因此第一版篩選列只有 All 可互動，
+其餘選項先停用。
+
+**建議修法**：
+`GetTransactionsByUserIDWithPagination` 加上 `direction`/`currency_id`/
+`from`/`to` 參數，直接在 SQL `WHERE` 子句篩選，而不是先撈出來再讓前端或
+應用層過濾。
+
+---
+
+## [FE3] 沒有匯率／估值來源
+
+**嚴重度**：Low（功能缺口，非缺陷）
+**位置**：無對應程式碼（`models/currency.go` 沒有匯率欄位，也沒有匯率相關的表）
+
+**問題描述**：
+Overview 頁的 Assets 區塊理想上想顯示「以 USDT 計價的估值」，但系統裡沒有
+任何匯率資料，也沒有整合任何外部匯率來源。`docs/FRONTEND_SPEC.md` §3.2/§5
+因此第一版直接隱藏估值欄位。
+
+**建議修法**：
+新增一個固定／靜態的匯率表（demo 用途不需要接真實匯率源）＋
+`GET /rates?base=USDT` 端點，回傳目前系統內每個幣別對 `base` 的匯率。
+
+---
+
+## [FE4] 沒有伺服器端的交易紀錄匯出功能
+
+**嚴重度**：Low（功能缺口，非缺陷）
+**位置**：無對應程式碼
+
+**問題描述**：
+History 頁的 Export 只能由前端把目前已下載的分頁資料轉成 CSV；資料量大時
+前端得先把所有分頁依序抓完才能匯出「全部」，對後端是多次重複請求、對使用者
+是額外等待時間，且沒有一個明確的筆數上限保護（`docs/FRONTEND_SPEC.md` §3.4
+的第一版做法是前端設一個安全上限，超過就提示使用者縮小範圍，而不是真的把
+所有資料都拉下來）。
+
+**建議修法**：
+新增 `GET /transactions/{user_id}/export?format=csv`，由後端直接查詢並
+串流輸出 CSV，不受前端分頁上限影響，也不需要前端發出多次請求。

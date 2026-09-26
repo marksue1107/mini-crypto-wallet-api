@@ -87,9 +87,11 @@ code 對應、驗證規則、資料排序等）：`internal/errors/codes.go`、`
 - 後端目前**沒有** cookie-based session（沒有 `Set-Cookie`、沒有 refresh token endpoint），token
   只透過 JSON body 回傳，且每次 API 呼叫都要手動帶 `Authorization: Bearer <token>`。這代表 httpOnly
   cookie 那種比較安全的存法在現有後端下做不到，除非後端改動。
-- 前端儲存策略：token + `user_id` + `username` 存在 `sessionStorage`（分頁關閉即清除），並在記憶體
-  中（例如 React context / TanStack Query 的 auth store）保留一份供 API client 攔截器讀取。**不要**
-  存在 `localStorage`——沒有比 sessionStorage 更好的理由持久保存一個沒有 revoke 機制的 bearer token。
+- 前端儲存策略：token + `user_id` + `username` 存在 `localStorage`，並在記憶體中（例如 React context /
+  TanStack Query 的 auth store）保留一份供 API client 攔截器讀取。這是刻意的決定（見第 7 節）：
+  demo 情境下「關閉分頁就要重新登入」的體驗成本，高於「沒有 revoke 機制的 bearer token 多存活一段
+  時間」的風險，換取重新整理瀏覽器／關閉分頁再打開都不用重新登入。§2.3 的過期檢查與 401 全域處理
+  邏輯不受影響——token 是否還在有效期內一律由 `expires_at` 判斷，不是由存放位置決定。
 - 同時存 `expires_at = login 當下時間 + expires_in * 1000`（毫秒 timestamp），供 2.3 的過期判斷用。
 
 ### 2.3 過期處理
@@ -139,11 +141,10 @@ hash 就能查）。因此 Explorer 頁面本身**不強制登入**：
   沒有「查詢是否已存在」的獨立端點，重複與否只能在送出當下由 `409 USER_ALREADY_EXISTS` 得知。故
   「即時顯示錯誤」實際上是「送出後即時顯示」，不是打字時即時查。欄位失焦（blur）時做的是純前端格式
   檢查（長度、email 格式），不是唯一性檢查。
-- 密碼強度條：後端目前只驗證 `min=8`（`models/user_dto.go` 的 `binding:"required,min=8"`），沒有大小
-  寫／數字／符號等規則。強度條規則因此只能是：
-  - 唯一「必要條件」勾選項：長度 ≥ 8。
-  - 強度條本身（弱／中／強）可以用前端自訂的啟發式（長度、字元種類）畫好看一點，但要清楚知道這只是
-    UX 加分，不是後端會擋的規則——之後如果後端加規則，這裡要同步改。
+- 密碼規則提示：後端目前只驗證 `min=8`（`models/user_dto.go` 的 `binding:"required,min=8"`），沒有
+  大小寫／數字／符號等規則。**不做任何弱／中／強視覺化分級**（見第 7 節第 4 項），只保留一個規則
+  勾選項「At least 8 characters」，輸入時即時打勾／取消，如實反映後端真正會擋的唯一規則，不暗示任何
+  後端不存在的複雜度要求。
 - 主按鈕「Create account」。
 - 成功後：後端 `POST /users` **不會**回傳 token（只回 `UserResponse`），需要另外呼叫
   `POST /auth/login` 才能拿到 token。前端在註冊成功後，直接用同一組 username/password 自動呼叫
@@ -183,15 +184,9 @@ hash 就能查）。因此 Explorer 頁面本身**不強制登入**：
 | 總餘額 | `GET /wallet/{user_id}` → `balance` | 目前只有一顆錢包（見 §5-1），故「總餘額」= 這顆錢包的 balance，不是加總。 |
 | Deposit 按鈕 | 無對應 API | 純 UI 佔位，點擊顯示「Deposits aren't supported yet」的提示，不導向任何頁面（後端沒有入金端點）。 |
 | 指標卡：總交易數 | `GET /transactions/{user_id}` 的 `pagination.total` | 呼叫一次 `page=1&page_size=1` 即可拿到 `total`，不用抓全部資料。 |
-| 指標卡：24h 支出／收入、總餘額旁的「24 小時變化」 | 前端從交易紀錄計算 | 見 §5-6，後端沒有這個統計 API，此指標卡是「盡力而為」，見下方空狀態說明。 |
+| 指標卡：24h 支出／收入、總餘額旁的「24 小時變化」 | `GET /wallet/{user_id}/stats`（`?window=24h`，也是預設值）→ `total_sent`/`total_received`/`balance_change` | 由資料庫直接聚合計算的精確值，不是前端從交易紀錄估算的（見下方）。「24 小時變化」直接顯示 `balance_change`（帶 `+`/`−` 前綴的絕對金額，不是百分比）。 |
 | Assets 列表 | `GET /wallet/{user_id}` + `GET /currencies/{currency_id}` | 只有一列：幣別圖示（前端自備的靜態圖示，依 `code` 對應）、`name`、`balance`、估值欄位隱藏（見 §5-3）。 |
 | Recent activity | `GET /transactions/{user_id}?page=1&page_size=5` | 每筆：方向圖示（比較 `from_user_id`/`to_user_id` 與目前登入的 `user_id`）、對象顯示 `user #{對方 user_id}`（見 §5-4）、`hash` 縮寫、`amount`、`created_at`。 |
-
-**24h 指標卡的實作限制**：`GET /transactions/{user_id}` 用 `page_size` 分頁，最大 `page_size=100`
-（`models/pagination.go` 的 `GetLimit()` 硬性上限）。如果使用者交易數超過 100 筆，前端用第一頁
-100 筆資料計算「24 小時內」的收支只會計算到最新 100 筆裡符合時間範圍的部分，並非全量。這頁的兩張
-24h 指標卡因此要在資料筆數達到上限時，於卡片內用次要文字加一行「Based on latest 100 transactions」
-的免責說明，而不是假裝這是精確的全量統計。
 
 **互動行為**
 - 眼睛圖示：切換金額顯示為 `••••••••` 或實際數字，純前端 state，不持久化（每次重新整理預設顯示）。
@@ -216,8 +211,9 @@ hash 就能查）。因此 Explorer 頁面本身**不強制登入**：
 1. 幣別選擇（下拉）。
 2. 收款人輸入框。
 3. 金額輸入框：上方右側顯示可用餘額；框內右側 MAX 快捷鍵 + 幣別標示。
-4. 限制說明列：「Up to 8 decimal places」+ 單筆上限（見下方「已知限制」）。
-5. 摘要區塊：轉帳後餘額（= 目前餘額 − 輸入金額，前端即時計算）、手續費（固定顯示 `0`，見 §5-8）。
+4. 限制說明列：「Up to 8 decimal places」+ 單筆上限（顯示 `GET /currencies` 回傳的
+   `max_transfer_amount` 實際數值，見下方）。
+5. 摘要區塊：轉帳後餘額（= 目前餘額 − 輸入金額，前端即時計算）、手續費（固定顯示 `0`，見 §5.7）。
 6. 主按鈕「Review transfer」→ 開啟確認彈窗（二次確認，顯示幣別／收款人／金額／轉帳後餘額／手續費
    摘要 + 「Confirm transfer」/「Back」）→ 確認後才真正呼叫 API。
 
@@ -226,32 +222,33 @@ hash 就能查）。因此 Explorer 頁面本身**不強制登入**：
 | 欄位 | 前端驗證（送出前） | 對應後端行為 |
 |---|---|---|
 | 幣別 | 必選，選項來自 `GET /currencies`（只顯示 `is_active === true`） | `currency_id` |
-| 收款人 | 必填，正整數 | `to_user_id`；**沒有依名稱查詢收款人的 API**，見 §5-2，欄位直接收 user_id |
-| 金額 | > 0；小數位數 ≤ 所選幣別的 `decimals`；不等於收款人 user_id 與自己相同時直接前端擋下 | `amount` |
+| 收款人 | 必填；輸入使用者名稱，欄位失焦（blur）時呼叫 `GET /users/lookup?username=` 解析成 `to_user_id` 並顯示對方名稱做確認；查無此人時欄位下方顯示「No user found with that username」，不阻擋繼續輸入但送出前必須先解析成功 | `to_user_id` |
+| 金額 | > 0；小數位數 ≤ 所選幣別的 `decimals`；不超過 `max_transfer_amount`；收款人與自己相同時直接前端擋下 | `amount` |
 
-**已知限制（重要）**：單筆轉帳上限（`MAX_TRANSFER_AMOUNT`）只存在於後端環境變數，**沒有任何 API
-會回傳這個數字給前端**。這代表「限制說明列」沒辦法顯示實際的上限數值，只能顯示通用文案「Subject to
-a per-transfer limit set by the server」，實際擋下要等送出後由 `INVALID_AMOUNT` 錯誤回饋（見 §4、
-§5 建議新增 API 一節）。
+**收款人欄位**：轉帳收的是 `to_user_id`，但 `GET /users/lookup?username=` 讓前端可以先把使用者輸入
+的名稱解析成 id 並顯示對方使用者名稱做二次確認，不用再讓使用者直接輸入裸的 user_id（見 §5.2，此項
+已由後端支援並實作）。
+
+**單筆上限**：載入頁面時透過 `GET /currencies` 取得所選幣別的 `max_transfer_amount`，直接顯示在限制
+說明列（例如「Up to 8 decimal places · Max 1,000,000 USDT per transfer」），並在前端送出前就用這個
+數值擋下超額輸入，不用等送出後才由 `AMOUNT_EXCEEDS_LIMIT` 錯誤告知（見 §4）。
 
 **確認彈窗**：符合 BRIEF「必須有確認步驟，不可一鍵直接送出」的要求。彈窗內不重新驗證，直接沿用送出
 前的欄位值；「Confirm transfer」點擊後才呼叫 `POST /wallet/transfer`，呼叫期間彈窗內按鈕顯示
 loading，兩顆按鈕都 disable，避免重複送出。
 
-**成功後顯示交易 hash 的實作方式（重要 gap）**：`POST /wallet/transfer` 成功時只回
-`{"message": "transfer successful"}`，**不含**剛建立的交易的 `hash`。要在成功畫面顯示可點擊的
-hash，第一版做法：轉帳成功後立刻呼叫 `GET /transactions/{user_id}?page=1&page_size=1`（已確認後端
-用 `created_at desc` 排序，見 `repositories/transaction_repository.go`），取第一筆，並比對
-`amount`/`to_user_id` 是否與剛送出的請求一致，一致才顯示其 `hash`；不一致（理論上不該發生，除非有
-併發轉帳）則顯示「Transfer succeeded, but couldn't confirm the transaction hash — check History」
-並附連結到 `/history`。這個 workaround 見 §5 建議新增 API 一節，正確做法是後端直接回傳交易物件。
+**成功後顯示交易 hash**：`POST /wallet/transfer` 成功時直接回傳建立的交易物件
+（`TransactionResponse{id,from_user_id,to_user_id,currency_id,amount,hash,signature,status,created_at}`），
+前端直接用回應裡的 `hash` 顯示並連結到 `/explorer/:hash`，不需要額外呼叫任何 API 去猜測剛剛建立的
+是哪一筆交易。
 
-**錯誤狀態涵蓋**（送出 `POST /wallet/transfer` 之後）：`INSUFFICIENT_BALANCE`、`INVALID_AMOUNT`
-（涵蓋「金額非正數」「超過小數位數」「超過單筆上限」三種情況，見 §4 的說明）、
-`SAME_ACCOUNT_TRANSFER`（雖然前端已預先擋下，仍保留伺服器端訊息作為 fallback）、`WALLET_NOT_FOUND`
-（用來代表「收款人不存在」——見 §4 對於這個 code 的重要說明）、`NOT_FOUND`（幣別在選單載入之後被
-停用的極端情況）。所有錯誤都在彈窗內或原表單上方以錯誤 banner 呈現，不關閉彈窗，讓使用者可以修改
-金額重試。
+**錯誤狀態涵蓋**（送出 `POST /wallet/transfer` 之後）：`INSUFFICIENT_BALANCE`、
+`AMOUNT_NOT_POSITIVE`／`INVALID_DECIMALS`／`AMOUNT_EXCEEDS_LIMIT`（三者都已由前端預先驗證擋下，仍
+保留伺服器端錯誤作為 fallback，見 §4）、`SAME_ACCOUNT_TRANSFER`（前端已預先擋下，此為 fallback）、
+`SENDER_WALLET_NOT_FOUND`（理論上不該出現，代表自己這個幣別沒有錢包）、`RECIPIENT_NOT_FOUND`
+（收款人不存在，或在這個幣別沒有錢包——理論上也不該出現，因為收款人已經先透過 lookup 解析過，除非
+兩次操作之間收款人被刪除）、`NOT_FOUND`（幣別在選單載入之後被停用的極端情況）。所有錯誤都在彈窗內
+或原表單上方以錯誤 banner 呈現，不關閉彈窗，讓使用者可以修改金額重試。
 
 **狀態**
 - 載入中：幣別選單與可用餘額各自骨架屏；沒有資料可用時（例如錢包 API 失敗）整個表單 disable 並顯示
@@ -263,10 +260,10 @@ hash，第一版做法：轉帳成功後立刻呼叫 `GET /transactions/{user_id
 
 | 動作 | API |
 |---|---|
-| 載入幣別 | `GET /currencies` |
+| 載入幣別（含小數位數、單筆上限） | `GET /currencies` |
 | 載入可用餘額 | `GET /wallet/{user_id}` |
-| 送出轉帳 | `POST /wallet/transfer` |
-| 取得交易 hash（workaround） | `GET /transactions/{user_id}?page=1&page_size=1` |
+| 解析收款人名稱 | `GET /users/lookup?username=` |
+| 送出轉帳（回應含 `hash`） | `POST /wallet/transfer` |
 
 ---
 
@@ -285,17 +282,23 @@ hash，第一版做法：轉帳成功後立刻呼叫 `GET /transactions/{user_id
 | 方向圖示 | 比較 `from_user_id`/`to_user_id` 與目前 `user_id` | `arrow-up-right`（紅，Sent）或 `arrow-down-left`（綠，Received） |
 | 對象與方向文字 | 同上 | 「Sent to user #{to_user_id}」/「Received from user #{from_user_id}」，見 §5-4 |
 | hash | `hash` | 縮寫顯示，點擊複製、再點導向 `/explorer/:hash` |
-| 金額與幣別 | `amount`（目前唯一幣別 USDT，見 §5-1，暫不顯示個別幣別代碼欄位以外的資訊） | `+`/`−` 前綴、綠/紅、補滿 8 位小數 |
+| 金額與幣別 | `amount` + `currency_id`（查對應幣別的 `decimals`/`code`） | `+`/`−` 前綴、綠/紅、依 `currency_id` 對應幣別的小數位數補滿（目前系統仍只有 USDT，實際顯示不變） |
 | 時間 | `created_at` | 時:分:秒 + 日期 |
 
 **分頁**：用 `GET /transactions/{user_id}?page={n}&page_size=20` 對應
 `PaginationResponse{page,page_size,total,total_pages}`；「Showing 1–20 of 147」由前端算
 `(page-1)*page_size+1` 到 `min(page*page_size, total)`。
 
-**Export**：後端沒有匯出 API（BRIEF §5-7 已明訂由前端處理）。做法：點擊 Export 時，前端用既有的分頁
-API 依序把**全部**頁面撈完（用目前的篩選/排序條件，`page_size=100` 一次撈滿上限以減少請求數），
-組成 CSV 後在瀏覽器下載，不是只匯出目前這一頁。這是一個判斷：對 demo 規模的資料量沒問題，但如果之後
-資料量變很大（幾千筆以上）這種全量拉取會變慢，值得之後跟後端要一個真正的匯出端點（見 §5）。
+**Export**：後端沒有匯出 API（BRIEF §5-7 已明訂由前端處理，見 §5.6）。做法：點擊 Export 前，先用
+`GET /transactions/{user_id}?page=1&page_size=1` 讀一次 `pagination.total`：
+- `total <= 1000`：用既有的分頁 API 依序把**全部**頁面撈完（`page_size=100` 一次撈滿上限以減少請求
+  數），組成 CSV 後在瀏覽器下載，不是只匯出目前這一頁。
+- `total > 1000`：**不**發動全量拉取，改為彈出提示「This account has {total} transactions — narrow
+  the date range or currency filter before exporting」（實際文案視 §5.5 篩選功能是否已上線調整），
+  Export 按鈕維持 disabled 直到符合上限。這個 1000 筆的上限是前端自訂的安全閥，避免帳號交易量變大時
+  觸發幾十次循序分頁請求造成瀏覽器/使用者體驗卡頓；門檻本身沒有對應到任何後端限制，純粹是前端判斷
+  （見第 7 節），之後如果門檻不合適可以再調整，或等後端補一個真正的匯出端點（見 §5.6）後直接拿掉
+  這個限制。
 
 **狀態**
 - 載入中：表格骨架屏（列狀骨架，不轉圈圈）。
@@ -344,12 +347,12 @@ API 依序把**全部**頁面撈完（用目前的篩選/排序條件，`page_si
 
 | 動作 | API | 欄位對應 |
 |---|---|---|
-| 查詢交易 | `GET /tx/{hash}` | `TransactionResponse{id,from_user_id,to_user_id,amount,hash,signature,status,created_at}`；幣別與小數位目前固定為 USDT/8（見 §5-1，回應本身不含 currency_id，無法查其他幣別） |
+| 查詢交易 | `GET /tx/{hash}` | `TransactionResponse{id,from_user_id,to_user_id,currency_id,amount,hash,signature,status,created_at}` |
 
-> 這裡有一個目前規格內部的落差要記錄：`TransactionResponse` **不含 `currency_id`**（`models/transaction_dto.go`），
-> 所以 Explorer／History／Overview 顯示金額時，實際上無法從交易本身知道它是哪個幣別，只能假設是
-> 系統目前唯一的 USDT（8 位小數）。等後端支援多幣別交易時，這個 DTO 需要補上 `currency_id`，前端才
-> 能正確顯示對應的小數位數與代碼，而不是硬編碼假設。這點放進 §5 的建議一起提。
+> `TransactionResponse` 現在含 `currency_id`，Explorer／History／Overview 顯示金額時可以（也應該）用
+> `currency_id` 查對應幣別的 `decimals`／`code` 來格式化，而不是像先前那樣假設全部交易都是 USDT。
+> 目前系統仍然只 seed 了 USDT 一種幣別，所以實際顯示結果不變，但邏輯上要走 `currency_id`，之後加新
+> 幣別交易才不用改前端程式碼。
 
 ---
 
@@ -369,26 +372,35 @@ API 依序把**全部**頁面撈完（用目前的篩選/排序條件，`page_si
 | `RATE_LIMIT_EXCEEDED` | 429 | `POST /users`（60/min）、`POST /auth/login`（10/min，較嚴格）、`POST /wallet/transfer`（60/min）、`GET /tx/:hash`（60/min） | 「Too many requests. Please wait a moment and try again.」 | 顯示錯誤，按鈕短暫 disable（可選：讀 `Retry-After` header 顯示倒數，非必要） |
 | `USER_ALREADY_EXISTS` | 409 | `POST /users` | 「That username or email is already registered.」 | 註冊表單內標示對應欄位 |
 | `INVALID_CREDENTIALS` | 401 | `POST /auth/login` | 固定文案「Invalid username or password」（不透露帳號是否存在，見 3.1） | 表單內錯誤，不導頁（跟 `UNAUTHORIZED` 是不同 code，不要共用處理邏輯） |
-| `WALLET_NOT_FOUND` | 404 | `GET /wallet/:user_id`；`POST /wallet/transfer`（涵蓋「自己這個幣別沒有錢包」與「收款人這個幣別沒有錢包」兩種情況，**同一個 code**） | Overview：「Wallet not found.」；Transfer：「Recipient not found, or doesn't hold this currency.」 | 見下方說明 |
+| `WALLET_NOT_FOUND` | 404 | `GET /wallet/:user_id`（只有一種情況，不會混淆） | 「Wallet not found.」 | 一般錯誤卡片 |
+| `SENDER_WALLET_NOT_FOUND` | 404 | `POST /wallet/transfer`（自己這個幣別沒有錢包，理論上不該出現） | 「You don't hold a wallet for this currency.」 | 表單內錯誤 |
+| `RECIPIENT_NOT_FOUND` | 404 | `POST /wallet/transfer`（收款人不存在，或收款人在這個幣別沒有錢包） | 「Recipient not found, or doesn't hold this currency.」 | 表單內錯誤，收款人欄位標紅（正常流程下應該先被 §3.3 的 `GET /users/lookup` 擋下，這裡是 fallback） |
 | `INSUFFICIENT_BALANCE` | 400 | `POST /wallet/transfer` | 「Insufficient balance for this transfer.」 | 表單內錯誤，金額欄位標紅 |
-| `INVALID_AMOUNT` | 400 | `POST /wallet/transfer`（涵蓋「金額非正數」「超過小數位數」「超過單筆上限」三種情況，**同一個 code**） | 直接顯示後端 `message`（三種情況文字不同：`amount must be positive` / `amount has more decimal places than this currency supports` / `amount exceeds maximum transfer limit`） | 見下方說明 |
+| `AMOUNT_NOT_POSITIVE` | 400 | `POST /wallet/transfer`（金額為零或負數） | 「Amount must be greater than zero.」 | 表單內錯誤（正常流程下應該先被前端驗證擋下，這裡是 fallback） |
+| `INVALID_DECIMALS` | 400 | `POST /wallet/transfer`（小數位數超過該幣別支援的位數） | 「Amount has too many decimal places for this currency.」 | 同上，fallback |
+| `AMOUNT_EXCEEDS_LIMIT` | 400 | `POST /wallet/transfer`（超過 `GET /currencies` 回傳的 `max_transfer_amount`） | 「Amount exceeds the per-transfer limit.」 | 同上，fallback |
 | `SAME_ACCOUNT_TRANSFER` | 400 | `POST /wallet/transfer` | 「You can't transfer to your own account.」 | 前端已預先擋下，此為 fallback |
 | `TRANSACTION_NOT_FOUND` | 404 | `GET /tx/:hash` | 「No transaction found for this hash.」 | Explorer 專用的「查無結果」，非一般錯誤（見 3.5） |
 | `TRANSACTION_FAILED` | 500 | `POST /wallet/transfer`（非預期失敗，例如 DB commit 失敗） | 「Transfer failed. Please try again.」 | 一般錯誤 + Retry（重試等同重新送出，需回到表單而非重打同一個請求） |
-| `USER_NOT_FOUND` | — | **目前沒有任何端點會回傳這個 code**（定義在 `internal/errors/codes.go` 但未被使用） | — | 前端不用特別處理；若未來某端點開始回傳，比照 `NOT_FOUND` 處理即可 |
+| `USER_NOT_FOUND` | 404 | `GET /users/lookup`（查無此使用者名稱） | 「No user found with that username.」 | Transfer 頁收款人欄位下方顯示，見 §3.3；非全域錯誤 |
 
-**關於「一個 code 對應多種情況」的處理原則**：`WALLET_NOT_FOUND` 與 `INVALID_AMOUNT` 都各自涵蓋
-兩到三種、後端訊息文字不同但 code 相同的情況。BRIEF 本來就要求「同時顯示訊息與 code」，所以第一版
-直接把後端回傳的 `message` 原文顯示出來，靠訊息文字幫使用者判斷差異；`code` 本身只用來決定「這是
-哪一類」錯誤（畫面配色、要不要標紅哪個欄位），不用來做更細的文字分流。這跟 CLAUDE.md「不要靠比對
-錯誤訊息字串做業務邏輯判斷」的原則不衝突——這裡訊息只是「顯示給人看」，不是拿來做 if/else 分支。
-真正想讓前端能分別處理，需要後端拆出更細的 code（見 §5）。
+**關於錯誤 code 的設計**：先前 `WALLET_NOT_FOUND`／`INVALID_AMOUNT` 各自涵蓋兩到三種、後端訊息文字
+不同但 code 相同的情況，靠 `message` 原文區分——這在第一版規格裡是已知妥協，現在後端已經拆成上面
+這幾個各自明確、彼此互斥的 code（`docs/BACKEND_PREP_PLAN.md` 第 1 批），前端可以（也應該）純粹依
+`code` 分流，不需要再解析 `message` 文字內容。`message`／`error` 欄位維持只用來顯示（BRIEF 要求同時
+顯示訊息與 code），不參與任何判斷邏輯。
 
 ---
 
 ## 5. 後端目前不支援的功能
 
-### 5.1 列出使用者所有幣別錢包
+> 這一節是 BRIEF §5 原始清單裡，`docs/BACKEND_PREP_PLAN.md` 兩批補強**之後仍然沒有處理**的部分（已
+> 處理的項目：轉帳回應含交易物件與 `hash`、error code 拆細、`GET /wallet/{user_id}/stats`、
+> `GET /currencies` 的 `max_transfer_amount`、`GET /users/lookup`——這些已經反映在第 1–4 節裡，不再
+> 出現在這裡）。其中影響範圍夠大、值得追蹤的四項（5.1、5.3、5.5、5.6）已整理進 `docs/BACKLOG.md`
+> （`[FE1]`–`[FE4]`）；5.4 是獨立的小缺口（見該節說明，不算在這四項裡）；5.7 不是缺口，是產品決定。
+
+### 5.1 列出使用者所有幣別錢包（`docs/BACKLOG.md` [FE1]）
 第一版只顯示單一錢包（`GET /wallet/{user_id}` 本身也只回一顆）。Assets 區塊保留清單版面，但目前
 永遠只有一列。
 
@@ -398,71 +410,42 @@ GET /wallets
 → 200: [ { id, user_id, currency_id, balance, created_at }, ... ]
 ```
 
-### 5.2 以使用者名稱查詢收款人
-轉帳收的是 `to_user_id`，沒有依名稱查詢的端點。第一版收款人欄位直接輸入 user_id，介面上仍預留顯示
-名稱的位置（查到名稱就顯示，查不到就顯示 `user #{id}`）。
+### 5.2 以使用者名稱查詢收款人 —— 已支援
+~~轉帳收的是 `to_user_id`，沒有依名稱查詢的端點~~。已由 `GET /users/lookup?username=` 支援（見
+`docs/BACKEND_PREP_PLAN.md` 第 2 批 2.3），細節見 §3.3——這裡保留編號只是為了跟 BRIEF 原始清單
+對照，不代表還有缺口。
 
-**建議新增 API**：`GET /users/lookup?username={username}` 回傳 `{ id, username }`（刻意不回傳
-email，避免用來列舉帳號）。
-
-### 5.3 估值（USDT value）
+### 5.3 估值（USDT value）（`docs/BACKLOG.md` [FE3]）
 沒有匯率來源。第一版隱藏估值欄位（Assets 區塊、指標卡都不顯示任何以外幣計價的估值）。
 
 **建議新增 API**：`GET /rates?base=USDT` 或類似的匯率端點；由於這是展示用途，静態/固定匯率表即可，
 不必接真實匯率源。
 
-### 5.4 交易對象顯示名稱
-交易紀錄回傳 `from_user_id`/`to_user_id`，不含名稱。第一版一律顯示 `user #{id}`。
+### 5.4 交易對象顯示名稱（`docs/BACKLOG.md` [FE2] 的相關項目，見下方說明）
+交易紀錄回傳 `from_user_id`/`to_user_id`，不含名稱。第一版一律顯示 `user #{id}`。注意
+`GET /users/lookup` 是「username → id」，不是「id → username」，不能直接拿來反解交易紀錄裡的
+`user_id`，所以這裡仍然是一個獨立的缺口，不是 §5.2 的副產品。
 
 **建議新增 API**：批次查詢，例如 `GET /users/batch?ids=1,2,3` 回傳 `[{id, username}, ...]`，避免
 前端在交易列表裡對每一筆交易各自打一次單筆查詢。
 
-### 5.5 Sent / Received、幣別、日期篩選
+### 5.5 Sent / Received、幣別、日期篩選（`docs/BACKLOG.md` [FE2]）
 後端 `GET /transactions/{user_id}` 目前只吃 `page`/`page_size`。第一版篩選列僅 All 可互動，其餘
 （Sent/Received tab、幣別下拉、日期區間）在畫面上顯示但 disabled，附 tooltip「Coming soon」。
 
 **建議新增 API**：`GET /transactions/{user_id}?direction=sent|received&currency_id=&from=&to=`
 （`direction` 由後端依 `from_user_id`/`to_user_id` 篩，比前端拿全部資料再篩省流量）。
 
-### 5.6 24 小時統計
-沒有對應 API。第一版由前端從已取得的交易紀錄計算（見 3.2 的實作限制說明：資料筆數超過 100 筆時
-只涵蓋最新 100 筆並加註免責文字）。
-
-**建議新增 API**：`GET /wallet/{user_id}/stats?window=24h` 回傳
-`{ transaction_count, total_sent, total_received, balance_change }`，由資料庫直接算，避免前端在
-分頁上限內算出不準確的結果。
-
-### 5.7 Export
-由前端將分頁資料轉成 CSV（見 3.4，第一版做法是把所有分頁依序拉完再匯出，不只匯出當頁）。
+### 5.6 Export（`docs/BACKLOG.md` [FE4]）
+由前端將分頁資料轉成 CSV（見 §3.4，第一版做法是把所有分頁依序拉完再匯出，並加上 1000 筆的安全上限，
+超過就提示使用者縮小範圍，不再嘗試全量拉取）。
 
 **建議新增 API**（若未來資料量變大）：`GET /transactions/{user_id}/export?format=csv`，由後端直接
-串流輸出，不受前端分頁上限（`page_size` 上限 100）影響。
+串流輸出，不受前端分頁上限（`page_size` 上限 100）與 §3.4 那個 1000 筆前端安全閥影響。
 
-### 5.8 手續費
-系統無手續費概念，固定顯示 `0` 並標示為「Zero fees」。無需新增 API。
-
-### 5.9（追加）轉帳成功不回傳交易 hash
-不在 BRIEF 原始清單裡，但核對 `handlers/transaction_handler.go` 之後發現：`POST /wallet/transfer`
-成功時只回 `{"message": "transfer successful"}`，沒有交易本身的任何欄位。第一版用「轉帳後立刻查詢
-最新一筆交易」的方式 workaround（見 3.3），但這個做法在理論上有極小的競態風險（同一秒內有其他
-併發轉帳影響到「最新一筆」判斷）。
-
-**建議修改既有 API**：`POST /wallet/transfer` 成功時直接回傳建立的交易物件（例如複用
-`models.TransactionResponse`），不用新增端點，只需改 handler 的成功回應。這是本次規格中優先度最高
-的後端修改建議，直接影響 Transfer 頁的核心體驗（顯示 hash、點擊前往 Explorer）。
-
-### 5.10（追加）單筆轉帳上限沒有 API 可查
-`MAX_TRANSFER_AMOUNT` 只存在於後端環境變數，沒有任何回應會把這個數字回傳給前端（見 3.3「已知限制」）。
-
-**建議新增 API**：在 `GET /currencies` 的回應裡加一個欄位（例如 `max_transfer_amount`，可以是
-per-currency 或全域共用一個值），或另開 `GET /config/limits`，讓前端能在使用者輸入前就提示上限，
-而不是等送出後才用錯誤訊息告知。
-
-### 5.11（追加）`TransactionResponse` 沒有 `currency_id`
-見 3.5 的說明：交易本身不帶幣別資訊，前端目前假設全部交易都是 USDT。
-
-**建議修改既有 API**：`TransactionResponse`（進而影響 `GET /tx/:hash`、`GET /transactions/:user_id`）
-加上 `currency_id` 欄位，這樣多幣別上線後前端才能正確顯示金額格式與代碼。
+### 5.7 手續費
+系統無手續費概念，固定顯示 `0` 並標示為「Zero fees」。無需新增 API（沒有對應的 `docs/BACKLOG.md`
+項目，這不是缺口，是產品決定）。
 
 ---
 
@@ -493,7 +476,7 @@ web/
 │   │   ├── generated/      # orval/openapi-typescript 產出，不手動編輯，隨 openapi.yaml 重新生成
 │   │   └── client.ts       # axios/fetch instance：baseURL、Authorization header 攔截器、401 全域處理
 │   ├── auth/
-│   │   ├── session.ts      # token/user_id/expires_at 的 sessionStorage 存取
+│   │   ├── session.ts      # token/user_id/expires_at 的 localStorage 存取
 │   │   └── AuthProvider.tsx
 │   ├── routes/
 │   │   ├── router.tsx      # React Router 路由表（對應本文件 §2.1）
@@ -525,34 +508,28 @@ web/
 
 ---
 
-## 7. 本次規格中「我做了判斷、你應該確認」的地方
+## 7. 已確認的決定
 
-1. **註冊後自動登入**：後端 `POST /users` 不回傳 token，我決定註冊成功後前端自動用同一組帳密呼叫
-   `POST /auth/login`，成功就直接進 `/`。BRIEF 沒有明講這段銜接怎麼做，這是我補的判斷。
-2. **Transfer 成功後拿 hash 的 workaround**：用「送出後立刻查詢最新一筆交易」，而不是等後端加欄位。
-   這是目前唯一能滿足 BRIEF「成功後顯示交易 hash」要求的做法，但如上面 §5.9 所說有極小競態風險，
-   而且多打一次 API。如果你覺得這個風險/成本不能接受，也可以選擇「第一版先不讓前端自己拼湊 hash，
-   只顯示『Transfer succeeded — check History for details』，等後端补欄位再顯示 hash」，這兩種我
-   都可以做，想聽你要哪一種。
-3. **`WALLET_NOT_FOUND`／`INVALID_AMOUNT` 這兩個 code 各自代表多種情況**：我決定第一版直接顯示
-   後端回傳的英文 `message` 原文來區分（而不是額外做字串比對邏輯去猜是哪一種），細節見 §4 最後一段
-   的說明。這符合 BRIEF「同時顯示訊息與 code」的要求，但如果你希望前端訊息完全自己掌控文案（不要
-   直接顯示後端英文原文），這裡需要後端拆出更細的 code 才能做到，我在 §5.9/§5.10 之外沒有把這個
-   算進「建議新增」清單，因為不確定你要不要為了這個而動後端。
-4. **密碼強度條只依「長度 ≥ 8」判斷必要條件，額外的强度分級是前端自訂的啟發式**：因為後端目前
-   真的沒有更多密碼規則。如果面試 demo 想呈現更嚴謹的密碼政策，需要先決定要不要真的在後端加規則，
-   不然強度條顯示的「強」可能只是前端好看，跟後端會不會接受完全無關。
-5. **Explorer 對未登入使用者也開放，且用不同（無導覽列）版面**：BRIEF 沒有明講 Explorer 在未登入
-   狀態下要不要保留完整導覽列，我依照「Public 徽章 + 不需登入」的說明，判斷未登入時不應該顯示完整
-   導覽列（因為沒有使用者名稱/頭像可顯示），改用精簡 header。如果你希望未登入也看到完整導覽列（只是
-   點其他分頁會被導去登入頁），跟我說一聲，我會改。
-6. **History 的 Export 是「拉全部分頁再匯出」，不是「只匯出目前這頁」**：BRIEF 沒指定範圍。我選了
-   「全部」因為對 demo 規模的資料量比較實用，但如果之後資料筆數變大，這個做法會變慢（見 §5.7），
-   到時候可能需要後端補一個真正的 export 端點。
-7. **24 小時統計卡片在交易數 > 100 時只統計最新 100 筆並加免責文字**，而不是隱藏整張卡片。BRIEF
-   §5-6 給了兩個選項（前端算 或 隱藏），我選了「前端算 + 加註」，如果你比較希望超過門檻就直接隱藏
-   這兩張卡片（更保守但也更誠實），可以再調整。
-8. **Token 存放在 `sessionStorage`（分頁關閉即登出）而非 `localStorage`**：BRIEF 沒指定，我依照
-   「沒有 revoke 機制的 bearer token 應該盡量減少存活時間」的考量選了 sessionStorage。這代表 demo
-   時如果面試官重新整理分頁沒問題，但關掉分頁再打開會需要重新登入——如果這對 demo 體驗是個問題（例如
-   想要重新整理瀏覽器也保持登入一段時間），跟我說，我會改成 localStorage + 明確的風險註記。
+第一版規格（本文件較早的版本）在以下 8 個地方做了判斷、列為「你應該確認」的項目。這些已經全部
+討論並確認，結論記錄在這裡；本文件第 1–6 節已經照著這些結論寫，不再用「如果你希望…我會改」的
+問句語氣。
+
+1. **註冊後自動登入** — 採用。後端 `POST /users` 不回傳 token，前端在註冊成功後自動用同一組帳密
+   呼叫 `POST /auth/login`，成功直接進 `/`（見 §3.1）。
+2. **Transfer 成功後的 hash** — 不採用「送出後立刻反查最新一筆交易」的臨時拼湊方式，改為後端直接
+   回傳交易物件。`POST /wallet/transfer` 已經改為成功時回傳完整的 `TransactionResponse`（含
+   `hash`），前端直接用回應裡的值，不需要額外呼叫任何 API（見 §3.3，對應後端變更：
+   `docs/BACKEND_PREP_PLAN.md` 第 1 批 1.1）。
+3. **`WALLET_NOT_FOUND`／`INVALID_AMOUNT` 這兩個 code 各自代表多種情況** — 拆細，不靠 `message`
+   原文區分。後端已經拆成 `SENDER_WALLET_NOT_FOUND`/`RECIPIENT_NOT_FOUND` 與
+   `AMOUNT_NOT_POSITIVE`/`INVALID_DECIMALS`/`AMOUNT_EXCEEDS_LIMIT`，前端純粹依 `code` 分流（見
+   §4，對應後端變更：`docs/BACKEND_PREP_PLAN.md` 第 1 批 1.2/1.3）。
+4. **密碼複雜度的視覺化提示** — 移除弱／中／強分級，只保留「At least 8 characters」的規則勾選
+   （見 §3.1）。後端目前確實只驗證這一條規則，分級顯示會暗示不存在的複雜度要求，不採用。
+5. **Explorer 對未登入使用者也開放，且用不同（無導覽列）版面** — 採用（見 §2.1/§2.4）。
+6. **History 的 Export** — 匯出全部分頁，但加上筆數上限保護：`total <= 1000` 才真的把所有分頁拉完
+   匯出，超過就提示使用者縮小範圍、不再嘗試全量拉取（見 §3.4）。
+7. **24 小時統計** — 改由後端新增 `GET /wallet/{user_id}/stats` API 計算，不用前端從交易紀錄估算
+   （見 §3.2，對應後端變更：`docs/BACKEND_PREP_PLAN.md` 第 2 批 2.1）。原本「資料筆數超過分頁上限時
+   只統計近期部分並加免責文字」的限制因此不再適用——新 API 是資料庫聚合查詢，不受分頁上限影響。
+8. **Token 儲存** — 改存 `localStorage`，保留 §2.3 的過期檢查與 401 全域處理邏輯不變（見 §2.2）。
