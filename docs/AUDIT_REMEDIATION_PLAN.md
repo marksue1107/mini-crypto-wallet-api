@@ -335,11 +335,11 @@
 ## 第 5 批：一鍵啟動與部署穩定性
 對應：Q5、Q6、Q7、Q8、A3
 
-- [ ] Q5：`api/Dockerfile` 改為 multi-stage，最終映像使用 distroless 或 alpine，以非 root 使用者執行
-- [ ] Q7：監聽位址改為 `:8080`
-- [ ] Q8：使用 `http.Server` + `Shutdown(ctx)` 實作 graceful shutdown，收到 SIGTERM/SIGINT 時等待請求完成並關閉 Kafka producer
-- [ ] Q6：`docker-compose.yml` 新增 `api` 服務，`depends_on` 搭配 postgres、kafka 的健康檢查；環境變數用 `.env`（加入 `.gitignore`），另提供 `.env.example`
-- [ ] A3：修正 README 的啟動步驟，改為 `cp .env.example .env && docker compose up`
+- [x] Q5：`api/Dockerfile` 改為 multi-stage，最終映像使用 distroless 或 alpine，以非 root 使用者執行
+- [x] Q7：監聽位址改為 `:8080`
+- [x] Q8：使用 `http.Server` + `Shutdown(ctx)` 實作 graceful shutdown，收到 SIGTERM/SIGINT 時等待請求完成並關閉 Kafka producer
+- [x] Q6：`docker-compose.yml` 新增 `api` 服務，`depends_on` 搭配 postgres、kafka 的健康檢查；環境變數用 `.env`（加入 `.gitignore`），另提供 `.env.example`
+- [x] A3：修正 README 的啟動步驟，改為 `cp .env.example .env && docker compose up`
 
 **驗收條件**
 - `cd api && go test ./... -race` 全部通過
@@ -350,7 +350,76 @@
 - 驗證完成後 `docker compose down`
 
 **驗證紀錄**
-（待填寫）
+- **Q5**：`api/Dockerfile` 改成兩階段：builder 用 `golang:1.26-bookworm` 以
+  `CGO_ENABLED=0` 編譯（正式環境的 `modernc.org/sqlite` 本來就是純 Go 實作，不需要
+  cgo，已用 `CGO_ENABLED=0 go build ./main` 實測確認可行），最終映像用
+  `gcr.io/distroless/static-debian12:nonroot`（無 shell、無套件管理器，預設
+  uid 65532）。Swagger UI 資源與 spec 都是編譯期埋進二進位檔（`swag` 把 spec 內嵌成
+  Go 字串常數、`swaggo/files` 內嵌 UI 靜態檔），所以最終映像只需要複製編譯好的
+  binary，不需要帶 `docs/` 目錄。實測：`docker build` 成功，映像大小 42.9MB
+  （對照舊的單階段 `golang:1.24-bullseye` 估計 800MB+），`docker inspect --format
+  '{{.Config.User}}'` 回報 `65532`。
+- **Q7/Q8**：`main.go` 監聽位址從 `localhost:8080` 改成 `:8080`；改用
+  `http.Server` + goroutine 跑 `ListenAndServe`，主 goroutine 等
+  `SIGINT`/`SIGTERM`，收到後呼叫 `srv.Shutdown(ctx)`（10 秒逾時）讓在途請求跑完，
+  `main()` 回傳時才觸發 `defer producer.Close()`，確保不會在還有請求在用 Kafka
+  連線時就把它關掉。
+- **Q6**：`docker-compose.yml` 新增 `api` service（`build: ./api`），`depends_on`
+  postgres 與 kafka 都要 `condition: service_healthy`（postgres 用
+  `pg_isready`，kafka 用 `kafka-broker-api-versions`）；環境變數全部從根目錄新增的
+  `.env`（`.env.example` 提供範本，`.gitignore` 已有 `.env`/`.env.*` 規則，但補上
+  `!.env.example` 例外——不然新加的 `.env.example` 會被既有的 `.env.*` 規則吃掉，
+  跟第 0 批 `docs/`/`README.md` 誤植是同一種錯誤，這次在建立當下就發現並修正，
+  沒有真的漏進 git）。**額外修正**：原本 Kafka 只有單一
+  `PLAINTEXT://localhost:9092` advertised listener，只對「host 上的 client」有效；
+  一旦 `api` 容器要用 `kafka` 這個 hostname 連過去，broker 回傳的 advertised
+  address 是 `localhost`，從 `api` 容器的角度看就是它自己，根本連不到——已改成雙
+  listener（`kafka:9092` 給容器間、`localhost:29092` 給 host）。
+  **實測過程中發現並修正的環境問題（非本次程式碼變更造成）**：本機原本就有
+  同名的 `zookeeper`/`kafka_client`/`postgres` 容器殘留（這個 repo 先前手動測試留下
+  的），`docker compose up` 因為 zookeeper 沒被 recreate 而殘留舊的 ephemeral
+  broker 註冊，導致 kafka 啟動失敗（`NodeExistsException`）；`docker compose down`
+  後乾淨重新 `up` 解決。接著又因為 `pg_data` volume 殘留舊密碼，導致新密碼認證失敗
+  （Postgres 只在資料目錄初始化當下套用 `POSTGRES_PASSWORD`），`docker compose
+  down -v` 清掉該 volume 後重新 `up` 解決——這兩個都是本機既有測試殘留狀態，不是
+  這次修改引入的新 bug，但值得記錄，因為之後任何人「乾淨」測試這份
+  `docker-compose.yml` 時，只要環境是真的乾淨的就不會遇到。
+- **新發現 N4（見下方，嚴重度 Medium，非 Critical，未停下、直接修正並記錄）**：
+  完整跑一次 `docker compose up` 後，第一次呼叫 `POST /users` 全部回報
+  500「no currency available」——全新資料庫沒有任何幣別，而且**完全沒有
+  建立幣別的 API**，`UserService.CreateUser`「找 USDT，找不到就退回第一個幣別」
+  的邏輯沒有東西可以退回。之所以先前所有測試都沒抓到，是因為每個測試都是透過
+  `test.CreateTestCurrency`/`CreateTestWalletWithDecimal` 之類的輔助函式手動建立
+  幣別，從未真的走過「全新、乾淨資料庫」這條路徑。修法：`db_conn.InitDatabase()`
+  在 `autoMigrate()` 之後呼叫新增的 `seedDefaultCurrency()`，資料庫裡一筆幣別都
+  沒有時自動建立一筆 `USDT`。修好後重跑：`POST /users`（兩次，alice/bob）→
+  `POST /auth/login` → `POST /wallet/transfer` → `GET /wallet/{id}` →
+  `GET /transactions/{id}`，全部回傳 200，餘額與交易紀錄正確
+  （alice 900、bob 收到 100、交易紀錄看得到 hash/signature/status）。
+- **A3**：README「How to Run」整個改寫成「`cp .env.example .env` →
+  `docker compose up -d`」單一流程，附上驗證 `/health`、`/ready` 與跑一次完整
+  API 流程的 `curl` 範例；保留手動 `docker build`/`docker run` 當作進階選項；
+  補上新增的 4 個環境變數說明與「為什麼會自動 seed 一顆 USDT」的說明。
+- **實際執行結果（本機 Docker Desktop 有啟動，非「環境不足」情況，已完整驗證，
+  非用猜的）**：
+  - `cd api && go test ./... -race -count=3`：連續三次全部 `ok`。
+  - `docker compose build`：成功（`api` service 映像建置完成）。
+  - `docker compose down -v && docker compose up -d`：`postgres`、`kafka_client`
+    皆回報 `Healthy` 後 `mini-wallet-api` 才啟動。
+  - `curl -f http://localhost:8080/health` 與 `/ready`：皆 200。
+  - 完整流程 `curl` 冒煙測試（見上方 N4 說明）：建立 alice/bob（200）→ 登入兩人拿
+    token（200）→ alice 轉帳 100 給 bob（200，`{"message":"transfer successful"}`）
+    → 查詢 alice 錢包（200，餘額 900）→ 查詢 alice 交易紀錄（200，1 筆，欄位正確）。
+  - `docker inspect mini-wallet-api --format '{{.Config.User}}'` → `65532`；
+    `docker exec mini-wallet-api id -u` 依計畫的備案，因為 distroless 沒有
+    shell/`id` 指令而失敗（`exec: "id": executable file not found in $PATH`），
+    改用上面的 `docker inspect` 結果佐證非 root，符合驗收條件的備案寫法。
+  - 驗證完成後 `docker compose down`（未加 `-v`，保留 volume 供後續使用）。
+- Commits（本批）：
+  - `a2cba15` fix(Q5): multi-stage Dockerfile, distroless non-root runtime image
+  - `21db2c1` fix(Q7,Q8): bind to all interfaces, graceful shutdown
+  - `d262580` fix(Q6,new): add api service to docker-compose, seed a default currency
+  - `73acbb6` docs(A3): fix README's How to Run to match the real one-command flow
 
 ---
 
@@ -489,3 +558,33 @@ bug 能一路潛伏的原因，且修完後已無任何呼叫端。新增 `servi
   `openapi.yaml` 的 `paths` 底下端點數量一致（10 個端點，見下方驗證紀錄），
   確認轉換沒有遺漏路徑。
 `go.mod`/`go.sum` 因此新增 `github.com/getkin/kin-openapi` 及其間接依賴。
+
+### N4（第 5 批冒煙測試發現，嚴重度 Medium，非 Critical — 狀態：**已修正**，commit `d262580`）
+第一次用 `docker compose up` 把完整環境（含 `api` service）跑起來、對著一個真正
+全新、剛 migrate 完的空資料庫打 `POST /users` 時，全部回報
+`500 {"code":"INTERNAL_ERROR", ...}`。查容器 log 發現是
+`SELECT * FROM currencies WHERE code = 'USDT' ... record not found`——
+`UserService.CreateUser`「找不到 USDT 就退回抓第一個幣別」的邏輯，在一顆幣別都
+沒有的資料庫上沒有東西可以退回，直接回報「no currency available」。而且**整個
+API 完全沒有建立幣別的端點**（`currency_handler.go` 只有 `GetCurrencies`/
+`GetCurrency`，沒有 `POST /currencies`），所以在乾淨部署上，沒有任何辦法能讓
+第一個使用者被建立出來。
+
+這個問題會存在到現在都沒被抓到，純粹是因為在此之前，*所有*自動化測試
+（`services/*_test.go`、`internal/test/*_test.go`）都是透過
+`test.CreateTestCurrency()`/直接 `db.Create(&models.Currency{...})` 之類的輔助
+函式手動建立幣別，從來沒有一條測試路徑是「資料庫完全空白、只跑過
+AutoMigrate」就直接呼叫 `POST /users`——這正是 `docker compose up` 之後的真實
+情境，但這條路徑在本次稽核與修正之前從未被任何自動化測試或人工驗證覆蓋過。
+
+**處理方式**：不算 Critical（不是資安或資金正確性問題，是「全新部署完全不能用」
+這種可用性缺口），依規則不需要停下，直接修正並在此記錄。`db_conn.InitDatabase()`
+新增 `seedDefaultCurrency()`，在 `autoMigrate()` 之後檢查 `currencies` 表是否為空，
+空的話自動建立一筆 `USDT`（`Decimals: 8, IsActive: true`，與測試輔助函式用的
+參數一致）。修正後重新完整跑一次 `docker compose down -v && up -d`，
+建立使用者 → 登入 → 轉帳 → 查詢交易紀錄全部成功（詳見第 5 批驗證紀錄）。
+
+**後續建議**（不在本次稽核範圍內，留給第 6 批的建議延伸功能或之後排程）：
+目前這個自動 seed 只是權宜之計，真正的解法應該是加一個 `POST /currencies`
+管理端點（可能需要額外的權限控管，畢竟這是會影響全站可用幣別的操作），讓幣別
+管理不必依賴「改原始碼」或「手動連資料庫塞資料」。
